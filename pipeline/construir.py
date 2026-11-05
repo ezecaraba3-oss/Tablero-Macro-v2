@@ -57,7 +57,11 @@ def num(x):
 
 
 def fmt(x, dec=4):
-    return "" if x is None else f"{round(x, dec):.{dec}f}".rstrip("0").rstrip(".")
+    if x is None:
+        return ""
+    texto = f"{round(x, dec):.{dec}f}"
+    # Solo se quitan ceros decimales: en un entero, «130000» debe seguir siendo 130000.
+    return texto.rstrip("0").rstrip(".") if "." in texto else texto
 
 
 def mover_mes(mes, n):
@@ -467,6 +471,166 @@ def agregar_ultimos_e2(obj):
     obj["ultimos"] = escribir_tabla(cols, filas)
 
 
+def agregar_etapa3(obj):
+    # Mensual: actividad, contexto global y crédito.
+    cols, filas = leer_tabla(obj["mensual"])
+    M = {r["mes"]: r for r in filas}
+    _, inv = leer_tabla(obj["inv_trim"])
+    pib = {r["trimestre"]: num(r["pib_n"]) for r in inv}
+    ultimo = filas[-1]["mes"]
+    for archivo, dec in (("actividad_mensual.csv", 2), ("global_mensual.csv", 3), ("credito_mensual.csv", 0)):
+        fcols, ffilas = leer_fuente(archivo)
+        F = {r["mes"]: r for r in ffilas}
+        cols.extend(fcols[1:])
+        for mes, r in M.items():
+            for c in fcols[1:]:
+                v = num(F.get(mes, {}).get(c))
+                # Antes de 1995 Brasil tuvo otras monedas e hiperinflación: esos valores no son comparables.
+                if c in ("brl", "selic") and mes < "1995-01":
+                    v = None
+                r[c] = fmt(v, dec) if v is not None else ""
+
+    def ia(col, mes):
+        a, b = num(M[mes][col]), num(M.get(mover_mes(mes, -12), {}).get(col))
+        return None if a is None or not b else (a / b - 1) * 100
+
+    derivadas = {"ibcbr_ia": "ibcbr", "isac_ia": "isac", "issp_ia": "issp", "soja_ia": "soja", "brent_ia": "brent"}
+    cols.extend(derivadas)
+    cols.extend(["credito_pib", "pagos_me_reservas"])
+    for mes, r in M.items():
+        for c, o in derivadas.items():
+            r[c] = fmt(ia(o, mes), 2)
+        r["credito_pib"] = ""
+        credito = num(r["prestamos_priv"])
+        if credito:
+            q = (int(mes[5:]) + 2) // 3
+            y = int(mes[:4])
+            claves = []
+            for _ in range(4):
+                claves.append(f"{y}-T{q}")
+                q -= 1
+                if q == 0:
+                    y, q = y - 1, 4
+            v = [pib.get(k) for k in claves]
+            if all(x is not None for x in v):
+                r["credito_pib"] = fmt(credito / (sum(v) / 4) * 100, 2)
+        pagos, res = num(r["pagos_me_12m"]), num(r["reservas"])
+        r["pagos_me_reservas"] = fmt(pagos / res * 100, 1) if pagos is not None and res else ""
+    obj["mensual"] = escribir_tabla(cols, filas)
+
+    # Trimestral: demanda agregada, contribuciones al crecimiento y precios y cantidades.
+    cols, filas = leer_tabla(obj["trimestral"])
+    _, dfilas = leer_fuente("demanda_trimestral.csv")
+    D = {r["trimestre"]: {k: num(v) for k, v in r.items() if k != "trimestre"} for r in dfilas}
+    comp = {"d_cons_priv": 1, "d_cons_pub": 1, "d_ibif": 1, "d_expo": 1, "d_impo": -1}
+    nuevas = ["d_pib", "d_cons_priv_ia", "d_cons_pub_ia", "d_ibif_ia", "d_expo_ia", "d_impo_ia"] + [f"ct_{c[2:]}" for c in comp] + ["ct_resto", "p_expo", "q_expo", "compras_12m_t"]
+    cols.extend(nuevas)
+    for r in filas:
+        t = r["trimestre"]
+        for c in nuevas:
+            r[c] = ""
+        if "-T" in t:
+            cierre = f"{t[:4]}-{int(t[-1]) * 3:02d}"
+            if cierre in M:
+                r["compras_12m_t"] = M[cierre].get("res_compras_12m", "")
+        d = D.get(t)
+        if "-T" not in t or not d:
+            continue
+        for c in ("d_pib", "p_expo", "q_expo"):
+            if d.get(c) is not None:
+                r[c] = fmt(d[c], 1 if c == "d_pib" else 2)
+        prev = D.get(f"{int(t[:4]) - 1}-{t[5:]}")
+        if not prev or not prev.get("d_pib") or d.get("d_pib") is None:
+            continue
+        suma = 0
+        for c, signo in comp.items():
+            if d.get(c) is None or not prev.get(c):
+                continue
+            r[f"{c}_ia"] = fmt((d[c] / prev[c] - 1) * 100, 2)
+            aporte = signo * (d[c] - prev[c]) / prev["d_pib"] * 100
+            r[f"ct_{c[2:]}"] = fmt(aporte, 2)
+            suma += aporte
+        r["ct_resto"] = fmt((d["d_pib"] / prev["d_pib"] - 1) * 100 - suma, 2)
+    obj["trimestral"] = escribir_tabla(cols, filas)
+
+    ccols, cfilas = leer_fuente("curva_pesos.csv")
+    # Un rendimiento negativo indica un título con ajuste, no comparable con la curva a tasa nominal.
+    obj["curva_pesos"] = escribir_tabla(ccols, [r for r in cfilas if num(r["tem"]) > 0])
+    agregar_sostenibilidad(obj)
+    agregar_ultimos_e3(obj)
+
+
+def agregar_sostenibilidad(obj):
+    """Compara cada indicador con un año antes, sin umbrales propios."""
+    _, mf = leer_tabla(obj["mensual"])
+    M = {r["mes"]: r for r in mf}
+    _, tf = leer_tabla(obj["trimestral"])
+    T = {r["trimestre"]: r for r in tf if "-T" in r["trimestre"]}
+    _, af = leer_tabla(obj["anual"])
+    A = {r["anio"]: r for r in af}
+    filas = []
+
+    def agregar(area, nombre, unidad, per, valor, per_prev, previo, mejor, dec=1):
+        if valor is None or previo is None:
+            sys.exit(f"Sostenibilidad: falta dato para {nombre}")
+        filas.append({"area": area, "indicador": nombre, "unidad": unidad, "periodo": per, "valor": fmt(valor, dec), "periodo_previo": per_prev, "previo": fmt(previo, dec),
+                      "lectura": "Mejoró" if (valor - previo) * mejor > 0 else ("Empeoró" if (valor - previo) * mejor < 0 else "Sin cambios")})
+
+    def men(area, nombre, unidad, col, mejor, dec=1):
+        m = ultimo_con(M, col)
+        p = mover_mes(m, -12)
+        agregar(area, nombre, unidad, f"{MESES[int(m[5:]) - 1]} {m[:4]}", num(M[m][col]), f"{MESES[int(p[5:]) - 1]} {p[:4]}", num(M[p][col]), mejor, dec)
+
+    def tri(area, nombre, unidad, col, mejor, dec=1):
+        t = max(k for k, r in T.items() if num(r.get(col)) is not None)
+        p = f"{int(t[:4]) - 1}-{t[5:]}"
+        agregar(area, nombre, unidad, f"{t[-1]}.º trim. {t[:4]}", num(T[t][col]), f"{p[-1]}.º trim. {p[:4]}", num(T[p][col]), mejor, dec)
+
+    def anu(area, nombre, unidad, col, mejor, dec=1):
+        a = max(k for k, r in A.items() if num(r.get(col)) is not None)
+        p = str(int(a) - 1)
+        agregar(area, nombre, unidad, a, num(A[a][col]), p, num(A[p][col]), mejor, dec)
+
+    anu("Deuda", "Deuda bruta / PIB", "%", "deuda_pib", -1)
+    anu("Deuda", "Deuda en moneda extranjera / exportaciones", "%", "deuda_me_expo", -1, 0)
+    anu("Deuda", "Deuda en moneda extranjera / reservas", "%", "deuda_me_reservas", -1, 0)
+    anu("Deuda", "Intereses / recursos tributarios", "%", "intereses_recursos", -1)
+    anu("Deuda", "Vida promedio de la deuda", "años", "vida_promedio", 1)
+    men("Fiscal", "Resultado primario (12 meses)", "% PIB", "fis_superavit_pib", 1, 2)
+    men("Fiscal", "Intereses netos (12 meses)", "% PIB", "fis_intereses_pib", -1, 2)
+    men("Fiscal", "Resultado financiero (12 meses)", "% PIB", "fis_financiero_pib", 1, 2)
+    tri("Externo", "Cuenta corriente / PIB (4 trimestres)", "%", "cc_pib_4t", 1, 2)
+    men("Externo", "Compras de divisas del BCRA (12 meses)", "M US$", "res_compras_12m", 1, 0)
+    men("Externo", "Pagos de deuda en moneda extranjera / reservas brutas", "%", "pagos_me_reservas", -1)
+    men("Externo", "Riesgo país", "pb", "riesgo_pais", -1, 0)
+    cols = ["area", "indicador", "unidad", "periodo", "valor", "periodo_previo", "previo", "lectura"]
+    obj["sostenibilidad"] = escribir_tabla(cols, filas)
+
+
+def agregar_ultimos_e3(obj):
+    cols, filas = leer_tabla(obj["ultimos"])
+    _, mf = leer_tabla(obj["mensual"])
+    M = {r["mes"]: r for r in mf}
+
+    def fila(i, nombre, col, unidad, tipo, fuente):
+        m = ultimo_con(M, col)
+        a, b = num(M[m][col]), num(M.get(mover_mes(m, -12), {}).get(col))
+        var = None if b is None else ((a / b - 1) * 100 if tipo == "pct" else a - b)
+        filas.append({"id": i, "indicador": nombre, "valor": fmt(a, 2), "unidad": unidad, "periodo": m, "variacion": fmt(var, 2),
+                      "variacion_txt": "% interanual" if tipo == "pct" else f"{unidad} interanual", "estado": "neutral", "fuente": fuente,
+                      "periodo_txt": f"{MESES[int(m[5:]) - 1]} {m[:4]}"})
+
+    fila("soja", "Soja", "soja", "US$/t", "pct", "FMI vía FRED")
+    fila("brent", "Petróleo Brent", "brent", "US$/barril", "pct", "FMI vía FRED")
+    fila("fed", "Tasa de la Reserva Federal", "fed_funds", "%", "dif", "Reserva Federal vía FRED")
+    fila("ibcbr", "Actividad de Brasil (IBC-Br)", "ibcbr_ia", "%", "dif", "Banco Central de Brasil")
+    fila("uci", "Uso de la capacidad industrial", "uci", "%", "dif", "INDEC")
+    fila("isac", "Construcción (ISAC)", "isac", "índice", "pct", "INDEC")
+    fila("issp", "Servicios públicos (ISSP)", "issp", "índice", "pct", "INDEC")
+    fila("credito_pib", "Crédito al sector privado / PIB", "credito_pib", "%", "dif", "BCRA e INDEC")
+    obj["ultimos"] = escribir_tabla(cols, filas)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--actualizar-itcrm", action="store_true")
@@ -485,6 +649,7 @@ def main():
     agregar_anual_e2(obj)
     agregar_tablas_e2(obj)
     agregar_ultimos_e2(obj)
+    agregar_etapa3(obj)
     SALIDA.write_text(ini + json.dumps(obj, ensure_ascii=False) + fin, encoding="utf-8", newline="\n")
     print(f"Escrito {SALIDA.relative_to(RAIZ)}")
 

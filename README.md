@@ -2,7 +2,9 @@
 
 Versión en desarrollo, separada de [Tablero-Macro](https://github.com/ezecaraba3-oss/Tablero-Macro). Los cambios respecto de esa versión están en `CORRECCIONES.md`.
 
-Tablero de indicadores económicos y sociales de Argentina desde 1875: inflación, tasas, dólar, salarios, pobreza, actividad, comercio exterior, cuentas públicas, balance del gobierno actual y comparación entre gobiernos.
+Sitio: https://ezecaraba3-oss.github.io/Tablero-Macro-v2/
+
+Tablero de indicadores económicos y sociales de Argentina desde 1875: inflación, tasas, dólar, salarios, pobreza, actividad, comercio exterior, cuentas públicas, deuda, sector externo, BCRA, sostenibilidad, contexto global, balance del gobierno actual y comparación entre gobiernos.
 
 ## Archivos
 

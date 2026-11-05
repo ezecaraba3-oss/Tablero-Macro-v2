@@ -46,6 +46,26 @@ Decisiones de método:
 - **Empleo:** sector público y casas particulares usan la serie con estacionalidad, porque la desestacionalizada está vacía.
 - **Sin incorporar:** RIPTE, porque su serie está vacía en la API.
 
+## Etapa 3: contexto y sostenibilidad
+
+| Dónde | Qué se sumó | Fuente | Período |
+|---|---|---|---|
+| Sostenibilidad (sección nueva) | 12 indicadores contra un año antes, sin puntaje ni umbrales | Elaboración con datos del tablero | Según cada indicador |
+| Contexto global (sección nueva) | Soja, maíz, trigo, Brent, Fed, bono a 10 años, IBC-Br, real y Selic | FRED (incluye FMI) y Banco Central de Brasil | Desde 1954-1992 según la serie; Brasil desde 1995 o 2003 |
+| Actividad | Demanda agregada y aportes al crecimiento | INDEC | Desde 2004 |
+| Actividad | Capacidad instalada, ISAC e ISSP | INDEC | Desde 2012 o 2016 |
+| Balanza | Precio y cantidad de exportaciones | INDEC | Desde 1990 |
+| Inflación y tasas | Curva de tasas en pesos | ArgentinaDatos (no oficial) | Foto del 5 nov 2026 |
+| Actividad | Crédito al sector privado / PIB | BCRA e INDEC | Desde 2010 |
+
+Decisiones de método:
+
+- **Sostenibilidad:** muestra la dirección frente a un año antes. No hay puntaje porque cualquier ponderación sería arbitraria.
+- **Aportes al crecimiento:** salen de los componentes a precios de 2004. «Resto» se calcula por diferencia e incluye existencias y discrepancia estadística.
+- **Curva en pesos:** se excluye TTD26, con TEM de −6,55 %, porque un rendimiento negativo no es comparable con el resto.
+- **Brasil:** el real y la Selic se recortan desde 1995, porque antes hubo otras monedas e hiperinflación.
+- **Sin incorporar:** precio y cantidad de importaciones (series vacías en la API), morosidad (sin serie vigente localizada), historia de la curva en pesos.
+
 ## Revisado y sin cambios
 
 - **Energía eléctrica (`xd46`), sep 2021.** El valor de 257,82 M coincide con la fuente oficial, aunque los subrubros superen al total de combustibles y energía.

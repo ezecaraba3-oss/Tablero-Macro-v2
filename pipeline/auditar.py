@@ -60,7 +60,7 @@ PERMITIDO = {
     "ultimos": {(k, c) for k in ("saldo_m", "saldo_12m", "expo_12m", "impo_12m", "cobertura") for c in ("valor", "periodo", "periodo_txt", "variacion")},
 }
 COLUMNAS_LIBRES = {"mensual": {"tasa_real_personales", "tasa_real_personales_exante", "itcrm", "itcrb_bra", "itcrb_usa", "itcrb_chn", "itcrb_eur"}}
-control("conserva las tablas de la v1 y suma las nuevas", set(nuevo) - set(base) == {"deuda_perfil", "deuda_resumen"} and set(base) <= set(nuevo))
+control("conserva las tablas de la v1 y suma las nuevas", set(nuevo) - set(base) == {"deuda_perfil", "deuda_resumen", "curva_pesos", "sostenibilidad"} and set(base) <= set(nuevo))
 inesperados = []
 total = 0
 for n in base:
@@ -199,11 +199,43 @@ control("BCRA sin meses posteriores a la tabla", max(res) <= "2026-10", max(res)
 kp = {r["id"] for r in tabla(nuevo, "ultimos")}
 control("indicadores nuevos presentes", {"deuda_bruta", "deuda_pib", "cc_4t", "iip", "fis_fin", "emp_total", "compras_12m"} <= kp)
 
-# 7. Página.
+# 7. Etapa 3.
+Tt = {r["trimestre"]: r for r in tabla(nuevo, "trimestral") if "-T" in r["trimestre"]}
+Inv = {r["trimestre"]: r for r in tabla(nuevo, "inv_trim")}
+mal = [t for t, r in Tt.items() if num(r["d_pib"]) and t in Inv and not cerca(num(r["d_pib"]), num(Inv[t]["pib_r"]), 1)]
+control("PIB real de demanda = PIB real de inversión", not mal, str(mal[:5]))
+partes_ct = ["ct_cons_priv", "ct_cons_pub", "ct_ibif", "ct_expo", "ct_impo", "ct_resto"]
+ct = {t: r for t, r in Tt.items() if num(r["ct_cons_priv"]) is not None}
+mal = [t for t, r in ct.items() if not cerca(sum(num(r[c]) for c in partes_ct), num(r["pib_ia"]), 0.05)]
+control("contribuciones = crecimiento del PIB", not mal, f"{len(ct)} trimestres; {mal[:5]}")
+peor = max(abs(num(r["ct_resto"])) for r in ct.values())
+print(f"INFO  existencias y discrepancia, mayor aporte absoluto: {peor:.1f} pp")
+for col, lo, hi in (("uci", 30, 90), ("soja", 150, 900), ("brent", 5, 200), ("maiz", 50, 500), ("trigo", 80, 700), ("fed_funds", 0, 25), ("ust10", 0, 20), ("brl", 0.5, 8), ("selic", 1, 100), ("ibcbr", 50, 150)):
+    v = {m: num(x[col]) for m, x in M.items() if num(x[col]) is not None}
+    control(f"{col} en rango", lo <= min(v.values()) and max(v.values()) <= hi, f"{min(v)}..{max(v)} min={min(v.values()):.2f} max={max(v.values()):.2f}")
+cv = {m: num(x["credito_pib"]) for m, x in M.items() if num(x["credito_pib"]) is not None}
+control("crédito / PIB plausible", 2 < min(cv.values()) and max(cv.values()) < 30, f"{min(cv)}..{max(cv)} ult={cv[max(cv)]}")
+curva = tabla(nuevo, "curva_pesos")
+control("curva ordenada por plazo", [int(x["dias"]) for x in curva] == sorted(int(x["dias"]) for x in curva) and len(curva) >= 5, f"{len(curva)} títulos al {curva[0]['fecha']}")
+control("curva en rango", all(0 < num(x["tem"]) < 15 for x in curva))
+sost = tabla(nuevo, "sostenibilidad")
+control("sostenibilidad completa", len(sost) == 12 and all(x["lectura"] in ("Mejoró", "Empeoró", "Sin cambios") for x in sost))
+# Los enteros no deben perder ceros al formatearse.
+rc = {m: num(x["res_compras"]) for m, x in M.items() if num(x["res_compras"]) is not None}
+mal = [m for m, x in M.items() if num(x["res_compras_12m"]) is not None and not cerca(num(x["res_compras_12m"]), sum(rc[mover(m, -i)] for i in range(12)), 12)]
+control("compras de 12 meses = suma de compras mensuales", not mal, str(mal[:5]))
+fuente_c = {r["mes"]: num(r["prestamos_priv"]) for r in fuente("credito_mensual.csv")}
+mal = [m for m, x in M.items() if num(x["prestamos_priv"]) and not cerca(num(x["prestamos_priv"]), fuente_c[m], 1)]
+control("préstamos iguales a la fuente", not mal, str(mal[:5]))
+fila_r = next(x for x in sost if x["indicador"] == "Riesgo país")
+control("sostenibilidad: riesgo país coherente", cerca(num(fila_r["valor"]), num(M["2026-10"]["riesgo_pais"]), 1), fila_r["valor"])
+control("curva sin rendimientos negativos", all(num(x["tem"]) > 0 for x in curva))
+
+# 8. Página.
 html = (RAIZ / "index.html").read_text(encoding="utf-8")
 control("la página trae el ITCRM y su gráfico", 'id="c-itcrm"' in html and 'itcrm:{series' in html)
 control("la página no referencia s68", "s68" not in html)
-control("la página trae las secciones nuevas", all(f'data-sec="{s}"' in html for s in ("deuda", "externo", "bcra")))
+control("la página trae las secciones nuevas", all(f'data-sec="{s}"' in html for s in ("deuda", "externo", "bcra", "global", "sostenibilidad")))
 
 print(f"\n{'FALLARON ' + str(len(fallas)) + ' controles' if fallas else 'Todos los controles pasaron'}")
 sys.exit(1 if fallas else 0)

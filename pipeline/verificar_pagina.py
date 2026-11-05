@@ -23,7 +23,7 @@ if not nav:
     sys.exit("No encontré Edge ni Chrome")
 html = (RAIZ / "index.html").read_text(encoding="utf-8")
 secciones = re.findall(r'<section data-sec="(\w+)"', html)
-url = (RAIZ / "index.html").as_uri()
+url = sys.argv[1] if len(sys.argv) > 1 else (RAIZ / "index.html").as_uri()  # también acepta la URL publicada
 fallas = []
 with tempfile.TemporaryDirectory() as perfil:
     for sec in secciones:

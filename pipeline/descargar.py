@@ -243,8 +243,63 @@ def a_filas(series, clave):
     return [{clave: i, **{c: ("" if i not in s else round(s[i], 4)) for c, s in series.items()}} for i in indices]
 
 
+# Etapa 3
+SERIES_DEMANDA = {
+    "d_pib": "4.2_OGP_2004_T_17", "d_cons_priv": "4.2_MGCP_2004_T_25", "d_cons_pub": "4.2_DGCP_2004_T_30", "d_ibif": "4.2_DGIT_2004_T_25",
+    "d_expo": "4.2_DGE_2004_T_26", "d_impo": "4.2_OGI_2004_T_25", "d_existencias": "4.2_VE_2004_T_21",
+    "p_expo": "80.2_IIPENG_0_T_45", "q_expo": "80.2_IICENG_0_T_47",
+}
+SERIES_ACTIVIDAD = {
+    "uci": "31.3_UNG_2004_M_18", "uci_metales": "31.3_UIMB_2004_M_33", "uci_quimicos": "31.3_USPQ_2004_M_34", "uci_textiles": "31.3_UPT_2004_M_23",
+    "isac": "33.2_ISAC_SIN_EDAD_0_M_23_56", "issp": "302.3_S_DESEST_NRAL_0_S_19",
+}
+FRED = {"fed_funds": "FEDFUNDS", "ust10": "DGS10", "brent": "POILBREUSDM", "soja": "PSOYBUSDM", "maiz": "PMAIZMTUSDM", "trigo": "PWHEAMTUSDM"}
+BCB = {"ibcbr": 24364, "brl": 3698, "selic": 4189}
+LETRAS_URL = "https://api.argentinadatos.com/v1/finanzas/letras"
+
+
+def fred(serie):
+    """Promedio mensual de una serie de FRED: {AAAA-MM: valor}."""
+    filas = list(csv.DictReader(io.StringIO(bajar(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={serie}").decode("utf-8"))))
+    grupos = {}
+    for f in filas:
+        v = f.get(serie)
+        if v not in (None, "", "."):
+            grupos.setdefault(f["observation_date"][:7], []).append(float(v))
+    return {m: sum(v) / len(v) for m, v in grupos.items()}
+
+
+def bcb(serie):
+    """Serie mensual del Banco Central de Brasil: {AAAA-MM: valor}."""
+    d = json.loads(bajar(f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie}/dados?formato=json"))
+    return {f"{x['data'][6:10]}-{x['data'][3:5]}": float(x["valor"]) for x in d if x["valor"] not in ("", None)}
+
+
+def etapa3():
+    d = api(SERIES_DEMANDA)
+    trim = {c: {f"{m[:4]}-T{(int(m[5:]) + 2) // 3}": v for m, v in s.items()} for c, s in d.items()}
+    guardar("demanda_trimestral.csv", ["trimestre", *trim], a_filas(trim, "trimestre"))
+    d = api(SERIES_ACTIVIDAD)
+    guardar("actividad_mensual.csv", ["mes", *d], a_filas(d, "mes"))
+    glob = {c: fred(s) for c, s in FRED.items()}
+    glob.update({c: bcb(s) for c, s in BCB.items()})
+    guardar("global_mensual.csv", ["mes", *glob], a_filas(glob, "mes"))
+    cred = {}
+    for f, v in bcra(26):
+        cred[f[:7]] = v
+    guardar("credito_mensual.csv", ["mes", "prestamos_priv"], a_filas({"prestamos_priv": cred}, "mes"))
+    letras = json.loads(bajar(LETRAS_URL))
+    fecha = letras["fechaActualizacion"][:10]
+    guardar("curva_pesos.csv", ["ticker", "vencimiento", "dias", "tem", "tea", "precio", "fecha"],
+            [{"ticker": x["ticker"], "vencimiento": x["fechaVencimiento"], "dias": x["diasAlVencimiento"], "tem": x["temPorcentaje"], "tea": x["teaPorcentaje"],
+              "precio": x["precioArs"], "fecha": fecha} for x in sorted(letras["letras"], key=lambda y: y["diasAlVencimiento"])])
+
+
 def main():
     FUENTES.mkdir(parents=True, exist_ok=True)
+    if "--etapa3" in sys.argv:
+        etapa3()
+        return
     d = api(SERIES_FISCAL)
     guardar("fiscal_mensual.csv", ["mes", *d], a_filas(d, "mes"))
 
@@ -274,6 +329,7 @@ def main():
             ult[f[:7]] = v
         mes[c] = ult
     guardar("bcra_mensual.csv", ["mes", *mes], a_filas(mes, "mes"))
+    etapa3()
 
 
 if __name__ == "__main__":
