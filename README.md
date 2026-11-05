@@ -1,11 +1,15 @@
-# Tablero Macro · Argentina
+# Tablero Macro 2.0 · Argentina
+
+Versión en desarrollo, separada de [Tablero-Macro](https://github.com/ezecaraba3-oss/Tablero-Macro). Los cambios respecto de esa versión están en `CORRECCIONES.md`.
 
 Tablero de indicadores económicos y sociales de Argentina desde 1875: inflación, tasas, dólar, salarios, pobreza, actividad, comercio exterior, cuentas públicas, balance del gobierno actual y comparación entre gobiernos.
 
 ## Archivos
 
 - `index.html`: la página.
-- `assets/datos.js`: todos los datos (series en formato CSV). Para actualizar los datos se reemplaza este archivo.
+- `assets/datos.js`: todos los datos (series en formato CSV). Se genera con `pipeline/construir.py`; no se edita a mano.
+- `pipeline/`: construcción y controles de los datos. Ver `pipeline/README.md`.
+- `CORRECCIONES.md`: qué se corrigió, qué se agregó y qué sigue pendiente.
 - `assets/dash.js`: el motor que lee los datos y dibuja los gráficos.
 - `assets/d3.v7.9.0.min.js`: la librería de gráficos (D3, licencia ISC).
 
