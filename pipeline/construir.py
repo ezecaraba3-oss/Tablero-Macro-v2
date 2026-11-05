@@ -231,6 +231,242 @@ def actualizar_ultimos(obj, M):
     obj["ultimos"] = escribir_tabla(cols, filas)
 
 
+def leer_fuente(nombre):
+    return leer_tabla((RAIZ / "pipeline" / "fuentes" / nombre).read_text(encoding="utf-8"))
+
+
+def trimestre_de(mes):
+    return f"{mes[:4]}-T{(int(mes[5:]) + 2) // 3}"
+
+
+def suma_12m(serie, mes):
+    valores = [serie.get(mover_mes(mes, -i)) for i in range(12)]
+    return None if any(v is None for v in valores) else sum(valores)
+
+
+def agregar_mensual_e2(obj):
+    cols, filas = leer_tabla(obj["mensual"])
+    M = {r["mes"]: r for r in filas}
+    ultimo = filas[-1]["mes"]
+    _, inv = leer_tabla(obj["inv_trim"])
+    pib = {r["trimestre"]: num(r["pib_n"]) for r in inv}
+
+    def pib_4t(mes):
+        t = trimestre_de(mes)
+        y, q = int(t[:4]), int(t[-1])
+        claves = []
+        for _ in range(4):
+            claves.append(f"{y}-T{q}")
+            q -= 1
+            if q == 0:
+                y, q = y - 1, 4
+        valores = [pib.get(k) for k in claves]
+        # pib_n está anualizado: el PIB de cuatro trimestres es el promedio, no la suma.
+        return None if any(v is None for v in valores) else sum(valores) / 4
+
+    def pib_mes(mes):
+        """PIB de 12 meses interpolado entre cierres de trimestre, como el primario de la v1."""
+        resto = (int(mes[5:]) - 1) % 3
+        fin = pib_4t(mes)
+        if resto == 2 or fin is None:
+            return fin
+        inicio = pib_4t(mover_mes(mes, -(resto + 1)))
+        return None if inicio is None else inicio + (fin - inicio) * (resto + 1) / 3
+
+    nuevas = {}
+    # Deuda y BCRA: columnas tal como vienen (solo meses dentro de la tabla).
+    dcols, dfilas = leer_fuente("deuda_mensual.csv")
+    for c in dcols[1:]:
+        nuevas[c] = {r["mes"]: num(r[c]) for r in dfilas if num(r[c]) is not None}
+    pagos_int = {m: nuevas["pagos_int_ars"].get(m, 0) + nuevas["pagos_int_me"].get(m, 0) for m in nuevas["pagos_total"]}
+    nuevas["pagos_total_12m"] = {m: suma_12m(nuevas["pagos_total"], m) for m in nuevas["pagos_total"]}
+    nuevas["pagos_me_12m"] = {m: suma_12m(nuevas["pagos_me"], m) for m in nuevas["pagos_total"]}
+    nuevas["pagos_int_12m"] = {m: suma_12m(pagos_int, m) for m in nuevas["pagos_total"]}
+    nuevas["deuda_pesos"] = {m: nuevas["deuda_ars_fija"][m] + nuevas["deuda_ars_cer"][m] for m in nuevas["deuda_ars_fija"]}
+    nuevas["deuda_me_otras"] = {m: nuevas["deuda_eur"][m] + nuevas["deuda_jpy"][m] + nuevas["deuda_otras"][m] for m in nuevas["deuda_eur"]}
+
+    bcols, bfilas = leer_fuente("bcra_mensual.csv")
+    for c in bcols[1:]:
+        nuevas[c] = {r["mes"]: num(r[c]) for r in bfilas if num(r[c]) is not None and r["mes"] <= ultimo}
+    nuevas["res_compras_12m"] = {m: suma_12m(nuevas["res_compras"], m) for m in nuevas["res_compras"]}
+    nuevas["pasivos_rem"] = {m: nuevas["pases_pasivos"][m] + nuevas["leliq"][m] for m in nuevas["pases_pasivos"] if m in nuevas["leliq"]}
+    nuevas["pasivos_rem_base"] = {m: v / nuevas["base_monetaria"][m] for m, v in nuevas["pasivos_rem"].items() if nuevas["base_monetaria"].get(m)}
+
+    # Empleo y viajes.
+    scols, sfilas = leer_fuente("series_mensuales.csv")
+    serie = {c: {r["mes"]: num(r[c]) for r in sfilas if num(r[c]) is not None} for c in scols[1:]}
+    for c in scols[1:]:
+        if c.startswith("emp_"):
+            nuevas[c] = serie[c]
+    viajes = {m: serie["viajes_cobros"][m] - serie["viajes_pagos"][m] for m in serie["viajes_cobros"] if m in serie["viajes_pagos"]}
+    nuevas["viajes_neto"] = viajes
+    nuevas["viajes_neto_12m"] = {m: suma_12m(viajes, m) for m in viajes}
+
+    # Fiscal: acumulado de 12 meses sobre el PIB de los últimos cuatro trimestres.
+    fcols, ffilas = leer_fuente("fiscal_mensual.csv")
+    F = {c: {r["mes"]: num(r[c]) for r in ffilas if num(r[c]) is not None} for c in fcols[1:]}
+    componentes = ["f_prestaciones", "f_remuneraciones", "f_bienes_serv", "f_transf_provincias", "f_universidades", "f_transf_otras",
+                   "f_deficit_empresas", "f_otros_corrientes", "f_transf_exterior", "f_intereses", "f_otras_rentas"]
+    meses_f = sorted(F["f_gastos"])
+    F["f_capital"] = {m: sum(F[c].get(m, 0) for c in ("f_capital_directa", "f_capital_provincias", "f_capital_otras", "f_capital_resto")) for m in meses_f}
+    F["f_transf_priv_dif"] = {m: F["f_gastos_corrientes"][m] - sum(F[c].get(m, 0) for c in componentes) for m in meses_f}
+    F["f_resto"] = {m: sum(F[c].get(m, 0) for c in ("f_transf_otras", "f_deficit_empresas", "f_otros_corrientes", "f_transf_exterior", "f_otras_rentas")) for m in meses_f}
+    salida = {"fis_ingresos_pib": "f_ingresos", "fis_gastos_pib": "f_gastos", "fis_financiero_pib": "f_financiero", "fis_superavit_pib": "f_superavit",
+              "fis_intereses_pib": "f_intereses", "fg_prestaciones": "f_prestaciones", "fg_transf_priv": "f_transf_priv_dif", "fg_remuneraciones": "f_remuneraciones",
+              "fg_bienes_serv": "f_bienes_serv", "fg_provincias": "f_transf_provincias", "fg_universidades": "f_universidades", "fg_capital": "f_capital", "fg_resto": "f_resto"}
+    for col, origen in salida.items():
+        nuevas[col] = {}
+        for m in meses_f:
+            s, p = suma_12m(F[origen], m), pib_mes(m)
+            if s is not None and p:
+                nuevas[col][m] = s / p * 100
+    # Agregar columnas.
+    decimales = {"pasivos_rem_base": 3}
+    for c, serie_c in nuevas.items():
+        cols.append(c)
+        dec = decimales.get(c, 3 if c.startswith(("fis_", "fg_")) else 1)
+        for mes, r in M.items():
+            v = serie_c.get(mes)
+            r[c] = fmt(v, dec) if v is not None else ""
+    obj["mensual"] = escribir_tabla(cols, filas)
+    return M
+
+
+def agregar_trimestral_e2(obj, M):
+    cols, filas = leer_tabla(obj["trimestral"])
+    _, sfilas = leer_fuente("series_trimestrales.csv")
+    S = {r["trimestre"]: r for r in sfilas}
+    _, inv = leer_tabla(obj["inv_trim"])
+    pib = {r["trimestre"]: num(r["pib_n"]) for r in inv}
+
+    def previos(t, n=4):
+        y, q = int(t[:4]), int(t[-1])
+        out = []
+        for _ in range(n):
+            out.append(f"{y}-T{q}")
+            q -= 1
+            if q == 0:
+                y, q = y - 1, 4
+        return out
+
+    def tc_prom(t):
+        y, q = t[:4], int(t[-1])
+        v = [num(M[f"{y}-{i:02d}"]["tc_a3500"]) for i in range((q - 1) * 3 + 1, q * 3 + 1) if f"{y}-{i:02d}" in M]
+        return sum(v) / len(v) if len(v) == 3 else None
+
+    vals = {t: {c: num(r[c]) for c in r if c != "trimestre"} for t, r in S.items()}
+    for t, v in vals.items():
+        if v.get("cc_rentas") is not None:
+            v["cc_primario"] = v["cc_rentas"] + (v.get("cc_remuneraciones") or 0)
+            v["cc_secundario"] = v["cc"] - v["cc_bienes"] - v["cc_servicios"] - v["cc_primario"]
+    flujo = ["cc", "cc_bienes", "cc_servicios", "cc_primario", "cc_secundario", "cfin", "cfin_directa", "cfin_cartera", "cfin_otra"]
+    nuevas = flujo + [c + "_4t" for c in flujo] + ["cc_pib_4t", "errores", "iip_neta", "iip_gobierno", "iip_bcra", "iip_bancos", "iip_otros", "subocupacion", "asal_sin_desc"]
+    cols.extend(nuevas)
+    for r in filas:
+        t = r["trimestre"]
+        v = vals.get(t, {})
+        for c in nuevas:
+            r[c] = ""
+        if "-T" not in t or not v:
+            continue
+        for c in flujo + ["errores", "iip_neta", "iip_gobierno", "iip_bcra", "iip_bancos", "iip_otros"]:
+            if v.get(c) is not None:
+                r[c] = fmt(v[c], 1)
+        for c in ("subocupacion", "asal_sin_desc"):
+            if v.get(c) is not None:
+                r[c] = fmt(v[c] * 100, 1)
+        ventana = previos(t)
+        for c in flujo:
+            x = [vals.get(k, {}).get(c) for k in ventana]
+            if all(i is not None for i in x):
+                r[c + "_4t"] = fmt(sum(x), 1)
+        ccs = [vals.get(k, {}).get("cc") for k in ventana]
+        # pib_n está anualizado: cada trimestre aporta un cuarto.
+        usd = [pib[k] / 4 / tc_prom(k) if pib.get(k) and tc_prom(k) else None for k in ventana]
+        if all(i is not None for i in ccs + usd):
+            r["cc_pib_4t"] = fmt(sum(ccs) / sum(usd) * 100, 2)
+    obj["trimestral"] = escribir_tabla(cols, filas)
+
+
+def agregar_anual_e2(obj):
+    cols, filas = leer_tabla(obj["anual"])
+    dcols, dfilas = leer_fuente("deuda_anual.csv")
+    D = {r["anio"]: r for r in dfilas}
+    cols.extend(dcols[1:])
+    for r in filas:
+        for c in dcols[1:]:
+            r[c] = D.get(r["anio"], {}).get(c, "")
+    obj["anual"] = escribir_tabla(cols, filas)
+
+
+def agregar_tablas_e2(obj):
+    for tabla, archivo in (("deuda_perfil", "deuda_perfil.csv"), ("deuda_resumen", "deuda_resumen.csv")):
+        cols, filas = leer_fuente(archivo)
+        obj[tabla] = escribir_tabla(cols, filas)
+
+
+def ultimo_con(M, col):
+    return max((m for m, r in M.items() if num(r.get(col)) is not None), default=None)
+
+
+def agregar_ultimos_e2(obj):
+    cols, filas = leer_tabla(obj["ultimos"])
+    _, mfilas = leer_tabla(obj["mensual"])
+    M = {r["mes"]: r for r in mfilas}
+    _, tfilas = leer_tabla(obj["trimestral"])
+    T = {r["trimestre"]: r for r in tfilas if "-T" in r["trimestre"]}
+    _, afilas = leer_tabla(obj["anual"])
+    A = {r["anio"]: r for r in afilas}
+    res = dict((r["indicador"], num(r["valor"])) for r in leer_fuente("deuda_resumen.csv")[1])
+
+    def txt_mes(m):
+        return f"{MESES[int(m[5:]) - 1]} {m[:4]}"
+
+    def fila(i, nombre, valor, unidad, periodo, var, var_txt, txt, fuente, estado="neutral"):
+        filas.append({"id": i, "indicador": nombre, "valor": fmt(valor, 2), "unidad": unidad, "periodo": periodo, "variacion": fmt(var, 2) if var is not None else "",
+                      "variacion_txt": var_txt, "estado": estado, "fuente": fuente, "periodo_txt": txt})
+
+    def desde_mes(i, nombre, col, unidad, var_tipo, fuente):
+        m = ultimo_con(M, col)
+        a, b = num(M[m][col]), num(M.get(mover_mes(m, -12), {}).get(col))
+        var = None if b is None else ((a / b - 1) * 100 if var_tipo == "pct" else a - b)
+        fila(i, nombre, a, unidad, m, var, "% interanual" if var_tipo == "pct" else f"{unidad} interanual", txt_mes(m), fuente)
+
+    def desde_trim(i, nombre, col, unidad, fuente):
+        t = max(k for k, r in T.items() if num(r.get(col)) is not None)
+        a = num(T[t][col])
+        b = num(T.get(f"{int(t[:4]) - 1}-{t[5:]}", {}).get(col))
+        fila(i, nombre, a, unidad, t, None if b is None else a - b, f"{unidad} interanual", f"{t[-1]}.º trim. {t[:4]}", fuente)
+
+    finanzas = "Secretaría de Finanzas"
+    desde_mes("deuda_bruta", "Deuda bruta de la Administración Central", "deuda_bruta", "M US$", "pct", finanzas)
+    desde_mes("deuda_fmi", "Deuda con el FMI", "deuda_fmi", "M US$", "pct", finanzas)
+    desde_mes("pagos_12m", "Pagos de deuda en moneda extranjera (12 meses)", "pagos_me_12m", "M US$", "pct", finanzas)
+    an = max(k for k, r in A.items() if num(r.get("deuda_pib")) is not None)
+    previo = num(A[str(int(an) - 1)]["deuda_pib"])
+    fila("deuda_pib", "Deuda bruta / PIB", num(A[an]["deuda_pib"]), "% PIB", an, num(A[an]["deuda_pib"]) - previo, "pp vs año anterior", an, finanzas)
+    fila("tasa_deuda", "Tasa promedio de la deuda", res["tasa_promedio"], "%", "2026-06", None, "", "30 jun 2026", finanzas)
+    fila("vida_deuda", "Vida promedio de la deuda", res["vida_promedio"], "años", "2026-06", None, "", "30 jun 2026", finanzas)
+    indec = "INDEC, balance de pagos"
+    desde_trim("cc_4t", "Cuenta corriente (4 trimestres)", "cc_4t", "M US$", indec)
+    desde_trim("cc_pib", "Cuenta corriente / PIB (4 trimestres)", "cc_pib_4t", "pp", "INDEC, propio")
+    desde_trim("iip", "Posición de inversión internacional neta", "iip_neta", "M US$", "INDEC")
+    desde_trim("subocupacion", "Subocupación", "subocupacion", "pp", "INDEC, EPH")
+    desde_trim("informalidad", "Asalariados sin descuento jubilatorio", "asal_sin_desc", "pp", "INDEC, EPH")
+    desde_mes("viajes_12m", "Saldo de turismo y viajes (12 meses)", "viajes_neto_12m", "M US$", "dif", "BCRA, mercado de cambios")
+    bcra = "BCRA"
+    desde_mes("compras_12m", "Compras de divisas del BCRA (12 meses)", "res_compras_12m", "M US$", "dif", bcra)
+    desde_mes("dep_usd", "Depósitos privados en dólares", "dep_usd_priv", "M US$", "pct", bcra)
+    desde_mes("prest_usd", "Préstamos privados en dólares", "prest_usd_priv", "M US$", "pct", bcra)
+    hacienda = "Hacienda e INDEC"
+    desde_mes("fis_fin", "Resultado financiero (12 meses)", "fis_financiero_pib", "pp", "dif", hacienda)
+    desde_mes("fis_int", "Intereses netos (12 meses)", "fis_intereses_pib", "pp", "dif", hacienda)
+    trabajo = "Secretaría de Trabajo, SIPA"
+    desde_mes("emp_total", "Trabajadores registrados", "emp_total", "miles", "pct", trabajo)
+    desde_mes("emp_privado", "Asalariados privados registrados", "emp_privado", "miles", "pct", trabajo)
+    obj["ultimos"] = escribir_tabla(cols, filas)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--actualizar-itcrm", action="store_true")
@@ -244,6 +480,11 @@ def main():
     actualizar_inv_mensual(obj, M)
     actualizar_comercio_anual(obj, M)
     actualizar_ultimos(obj, M)
+    M = agregar_mensual_e2(obj)
+    agregar_trimestral_e2(obj, M)
+    agregar_anual_e2(obj)
+    agregar_tablas_e2(obj)
+    agregar_ultimos_e2(obj)
     SALIDA.write_text(ini + json.dumps(obj, ensure_ascii=False) + fin, encoding="utf-8", newline="\n")
     print(f"Escrito {SALIDA.relative_to(RAIZ)}")
 

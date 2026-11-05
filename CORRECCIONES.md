@@ -25,6 +25,27 @@ Para repetir el proceso, ver `pipeline/README.md`.
 - La relación entre dólar real y saldo comercial ahora usa el ITCRM, así que empieza en 1997.
 - «Dólar oficial real» pasa a llamarse «Dólar oficial deflactado por IPC», porque no descuenta la inflación de EE. UU.
 
+## Etapa 2: variables agregadas
+
+Cada fuente se baja con `pipeline/descargar.py` y queda guardada en `pipeline/fuentes/`.
+
+| Área | Qué se sumó | Fuente | Período |
+|---|---|---|---|
+| Deuda (sección nueva) | Stock por moneda, tasa, legislación e instrumento; FMI y organismos; pagos; vencimientos; ratios | Secretaría de Finanzas | Mensual desde 2019; ratios desde 2000; vencimientos al 30 jun 2026 |
+| Sector externo (sección nueva) | Cuenta corriente, cuenta financiera, posición internacional, turismo | INDEC y BCRA vía datos.gob.ar | Desde 2006; posición desde 2016; turismo desde 2003 |
+| BCRA (sección nueva) | Factores de variación de reservas, compras de divisas, depósitos y préstamos en dólares, pases y LELIQ | API del BCRA | Desde 2010 |
+| Fiscal (ampliada) | Ingresos, gastos, intereses, resultado financiero y composición del gasto | Hacienda vía datos.gob.ar | Desde 2015 |
+| Empleo (ampliada) | Trabajadores registrados, informalidad, subocupación | Secretaría de Trabajo e INDEC vía datos.gob.ar | Desde 2012; EPH desde 2003 |
+
+Decisiones de método:
+
+- **Reservas netas: no se publican.** El swap con China, los encajes y otros pasivos no tienen una serie oficial actualizada que permita calcularlas sin supuestos.
+- **Fiscal:** se usa el Sector Público Nacional, base caja, metodología 2017. La serie IMIG se descartó porque tiene series vacías o cortadas en la API.
+- **PIB fiscal:** `pib_n` está anualizado, así que el PIB de 12 meses es el promedio de 4 trimestres, interpolado entre cierres como en la v1. El superávit primario coincide con el de la v1 en los 127 meses.
+- **Calculados por faltar en la API:** transferencias al sector privado (por diferencia), gasto de capital (suma de partes), ingreso primario (rentas + remuneraciones) e ingreso secundario (por diferencia).
+- **Empleo:** sector público y casas particulares usan la serie con estacionalidad, porque la desestacionalizada está vacía.
+- **Sin incorporar:** RIPTE, porque su serie está vacía en la API.
+
 ## Revisado y sin cambios
 
 - **Energía eléctrica (`xd46`), sep 2021.** El valor de 257,82 M coincide con la fuente oficial, aunque los subrubros superen al total de combustibles y energía.
