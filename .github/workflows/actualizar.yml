@@ -1,0 +1,63 @@
+name: Actualizar datos según el calendario
+
+on:
+  schedule:
+    - cron: "0 12 * * *" # 9:00 de Argentina
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/actualizar.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: actualizar-datos
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Probar datos.gob.ar
+        if: github.event_name != 'schedule'
+        continue-on-error: true
+        run: python pipeline/actualizar.py --probar datosgob
+      - name: Probar BCRA
+        if: github.event_name != 'schedule'
+        continue-on-error: true
+        run: python pipeline/actualizar.py --probar bcra
+      - name: Probar Secretaría de Finanzas
+        if: github.event_name != 'schedule'
+        continue-on-error: true
+        run: python pipeline/actualizar.py --probar finanzas
+      - name: Probar FRED
+        if: github.event_name != 'schedule'
+        continue-on-error: true
+        run: python pipeline/actualizar.py --probar fred
+      - name: Probar Banco Central de Brasil
+        if: github.event_name != 'schedule'
+        continue-on-error: true
+        run: python pipeline/actualizar.py --probar bcb
+      - name: Probar ArgentinaDatos
+        if: github.event_name != 'schedule'
+        continue-on-error: true
+        run: python pipeline/actualizar.py --probar argentinadatos
+      - name: Actualizar lo que toca
+        run: python pipeline/actualizar.py
+      - name: Publicar solo si hubo cambios
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "Claude"
+            git config user.email "noreply@anthropic.com"
+            git add assets pipeline index.html CALENDARIO.md
+            git commit -m "Datos: actualización según el calendario"
+            git push
+          else
+            echo "No hubo cambios para publicar."
+          fi

@@ -15,7 +15,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 RAIZ = Path(__file__).resolve().parent.parent
 NAVEGADORES = [r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
                r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-               r"C:\Program Files\Google\Chrome\Application\chrome.exe"]
+               r"C:\Program Files\Google\Chrome\Application\chrome.exe", "/usr/bin/google-chrome"]
 SIN_DATOS_ESPERADO = set()
 
 nav = next((n for n in NAVEGADORES if Path(n).exists()), None)
@@ -27,7 +27,7 @@ url = sys.argv[1] if len(sys.argv) > 1 else (RAIZ / "index.html").as_uri()  # ta
 fallas = []
 with tempfile.TemporaryDirectory() as perfil:
     for sec in secciones:
-        r = subprocess.run([nav, "--headless=new", "--disable-gpu", "--no-first-run", f"--user-data-dir={perfil}", "--enable-logging=stderr",
+        r = subprocess.run([nav, "--headless=new", "--no-sandbox", "--disable-gpu", "--no-first-run", f"--user-data-dir={perfil}", "--enable-logging=stderr",
                             "--virtual-time-budget=15000", "--window-size=1400,3000", "--dump-dom", f"{url}#{sec}"],
                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180)
         dom = r.stdout

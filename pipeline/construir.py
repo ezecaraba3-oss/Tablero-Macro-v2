@@ -18,6 +18,9 @@ import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import calendario as cal  # noqa: E402
+
 RAIZ = Path(__file__).resolve().parent.parent
 BASE = RAIZ / "pipeline" / "base" / "datos_v1.js"
 ITCRM_CSV = RAIZ / "pipeline" / "fuentes" / "itcrm_mensual.csv"
@@ -93,6 +96,8 @@ def bajar_itcrm():
             continue
         fecha = dt.date(1899, 12, 30) + dt.timedelta(days=int(float(f[0])))
         salida.append({"mes": fecha.strftime("%Y-%m"), **{c: fmt(num(f[i]), 3) for c, i in idx.items()}})
+    actual = dt.date.today().strftime("%Y-%m")
+    salida = [r for r in salida if r["mes"] < actual]
     meses = [r["mes"] for r in salida]
     if len(meses) != len(set(meses)):
         sys.exit("ITCRM: hay meses repetidos; revisar el archivo del BCRA")
@@ -248,12 +253,76 @@ def suma_12m(serie, mes):
     return None if any(v is None for v in valores) else sum(valores)
 
 
+def pib_nominal(inv):
+    """PIB nominal de inv_trim, ampliado con los trimestres nuevos de la fuente de demanda."""
+    pib = {r["trimestre"]: num(r["pib_n"]) for r in inv}
+    ruta = RAIZ / "pipeline" / "fuentes" / "demanda_trimestral.csv"
+    if ruta.exists():
+        cols, filas = leer_tabla(ruta.read_text(encoding="utf-8"))
+        if "pib_n" in cols:
+            for r in filas:
+                if r["trimestre"] not in pib and num(r["pib_n"]) is not None:
+                    pib[r["trimestre"]] = num(r["pib_n"])
+    return pib
+
+
+def extender_filas(obj):
+    """Suma filas para los períodos nuevos. Las series que no tienen ese dato quedan vacías."""
+    meses = set()
+    for archivo in ("deuda_mensual.csv", "bcra_mensual.csv", "series_mensuales.csv", "fiscal_mensual.csv", "actividad_mensual.csv", "global_mensual.csv", "credito_mensual.csv", "itcrm_mensual.csv"):
+        meses |= {r["mes"] for r in leer_fuente(archivo)[1]}
+    cols, filas = leer_tabla(obj["mensual"])
+    ultimo = filas[-1]["mes"]
+    mes = mover_mes(ultimo, 1)
+    tope = max(meses)
+    while mes <= tope:
+        filas.append({**{c: "" for c in cols}, "mes": mes})
+        mes = mover_mes(mes, 1)
+    obj["mensual"] = escribir_tabla(cols, filas)
+    trimestres = set()
+    for archivo in ("series_trimestrales.csv", "demanda_trimestral.csv"):
+        trimestres |= {r["trimestre"] for r in leer_fuente(archivo)[1]}
+    cols, filas = leer_tabla(obj["trimestral"])
+    existentes = {r["trimestre"] for r in filas}
+    for t in sorted(trimestres - existentes):
+        filas.append({**{c: "" for c in cols}, "trimestre": t, "trim_inicio": f"{t[:4]}-{(int(t[-1]) - 1) * 3 + 1:02d}"})
+    obj["trimestral"] = escribir_tabla(cols, filas)
+    cols, filas = leer_tabla(obj["anual"])
+    existentes = {r["anio"] for r in filas}
+    for a in sorted({r["anio"] for r in leer_fuente("deuda_anual.csv")[1]} - existentes):
+        filas.append({**{c: "" for c in cols}, "anio": a, "fecha": f"{a}-07"})
+    obj["anual"] = escribir_tabla(cols, filas)
+
+
+def tabla_calendario(obj):
+    """Tabla pública con el estado de cada fuente; depende solo de los datos, no de la fecha de hoy."""
+    conf = cal.cargar()
+    filas = []
+    for f in conf["automaticas"]:
+        u = cal.ultimo_periodo(f)
+        filas.append({"dato": f["nombre"], "origen": f["origen"], "frecuencia": f["frecuencia"], "ultimo": cal.texto_periodo(u), "orden": cal.proxima_fecha(f["regla"], u).isoformat(),
+                      "proxima": cal.proxima_fecha(f["regla"], u).strftime("%d/%m/%Y"), "estado": "Automática"})
+    for f in conf["pendientes"]:
+        _, tf = leer_tabla(obj[f["tabla"]])
+        clave = list(tf[0])[0]
+        valores = [r[clave] for r in tf if r.get(f["columna"]) not in ("", None)]
+        u = max(valores, key=str) if clave != "semestre" else valores[-1]
+        if "proxima_texto" in f:
+            orden, prox = "9999", f["proxima_texto"]
+        else:
+            d = cal.proxima_fecha(f["regla"], u)
+            orden, prox = d.isoformat(), d.strftime("%d/%m/%Y")
+        filas.append({"dato": f["nombre"], "origen": f["origen"], "frecuencia": f["frecuencia"], "ultimo": cal.texto_periodo(u), "orden": orden, "proxima": prox, "estado": "Pendiente: sin descarga automática"})
+    filas.sort(key=lambda x: (x["estado"] != "Automática", x["orden"]))
+    obj["calendario_datos"] = escribir_tabla(["dato", "origen", "frecuencia", "ultimo", "proxima", "estado"], [{k: v for k, v in x.items() if k != "orden"} for x in filas])
+
+
 def agregar_mensual_e2(obj):
     cols, filas = leer_tabla(obj["mensual"])
     M = {r["mes"]: r for r in filas}
     ultimo = filas[-1]["mes"]
     _, inv = leer_tabla(obj["inv_trim"])
-    pib = {r["trimestre"]: num(r["pib_n"]) for r in inv}
+    pib = pib_nominal(inv)
 
     def pib_4t(mes):
         t = trimestre_de(mes)
@@ -292,6 +361,12 @@ def agregar_mensual_e2(obj):
     bcols, bfilas = leer_fuente("bcra_mensual.csv")
     for c in bcols[1:]:
         nuevas[c] = {r["mes"]: num(r[c]) for r in bfilas if num(r[c]) is not None and r["mes"] <= ultimo}
+    # En los meses posteriores a la base de la v1, el dólar y las reservas salen de la API del BCRA.
+    for mes, r in M.items():
+        if r["tc_a3500"] == "" and mes in nuevas.get("tc_ref", {}):
+            r["tc_a3500"] = fmt(nuevas["tc_ref"][mes], 2)
+        if r["reservas"] == "" and mes in nuevas.get("reservas_ult", {}):
+            r["reservas"] = fmt(nuevas["reservas_ult"][mes], 0)
     nuevas["res_compras_12m"] = {m: suma_12m(nuevas["res_compras"], m) for m in nuevas["res_compras"]}
     nuevas["pasivos_rem"] = {m: nuevas["pases_pasivos"][m] + nuevas["leliq"][m] for m in nuevas["pases_pasivos"] if m in nuevas["leliq"]}
     nuevas["pasivos_rem_base"] = {m: v / nuevas["base_monetaria"][m] for m, v in nuevas["pasivos_rem"].items() if nuevas["base_monetaria"].get(m)}
@@ -341,7 +416,7 @@ def agregar_trimestral_e2(obj, M):
     _, sfilas = leer_fuente("series_trimestrales.csv")
     S = {r["trimestre"]: r for r in sfilas}
     _, inv = leer_tabla(obj["inv_trim"])
-    pib = {r["trimestre"]: num(r["pib_n"]) for r in inv}
+    pib = pib_nominal(inv)
 
     def previos(t, n=4):
         y, q = int(t[:4]), int(t[-1])
@@ -421,7 +496,10 @@ def agregar_ultimos_e2(obj):
     T = {r["trimestre"]: r for r in tfilas if "-T" in r["trimestre"]}
     _, afilas = leer_tabla(obj["anual"])
     A = {r["anio"]: r for r in afilas}
-    res = dict((r["indicador"], num(r["valor"])) for r in leer_fuente("deuda_resumen.csv")[1])
+    res = dict((r["indicador"], r["valor"]) for r in leer_fuente("deuda_resumen.csv")[1])
+    corte = res.pop("corte")
+    res = {k: num(v) for k, v in res.items()}
+    corte_txt = f"{int(corte[8:])} {MESES[int(corte[5:7]) - 1]} {corte[:4]}"
 
     def txt_mes(m):
         return f"{MESES[int(m[5:]) - 1]} {m[:4]}"
@@ -449,8 +527,8 @@ def agregar_ultimos_e2(obj):
     an = max(k for k, r in A.items() if num(r.get("deuda_pib")) is not None)
     previo = num(A[str(int(an) - 1)]["deuda_pib"])
     fila("deuda_pib", "Deuda bruta / PIB", num(A[an]["deuda_pib"]), "% PIB", an, num(A[an]["deuda_pib"]) - previo, "pp vs año anterior", an, finanzas)
-    fila("tasa_deuda", "Tasa promedio de la deuda", res["tasa_promedio"], "%", "2026-06", None, "", "30 jun 2026", finanzas)
-    fila("vida_deuda", "Vida promedio de la deuda", res["vida_promedio"], "años", "2026-06", None, "", "30 jun 2026", finanzas)
+    fila("tasa_deuda", "Tasa promedio de la deuda", res["tasa_promedio"], "%", corte[:7], None, "", corte_txt, finanzas)
+    fila("vida_deuda", "Vida promedio de la deuda", res["vida_promedio"], "años", corte[:7], None, "", corte_txt, finanzas)
     indec = "INDEC, balance de pagos"
     desde_trim("cc_4t", "Cuenta corriente (4 trimestres)", "cc_4t", "M US$", indec)
     desde_trim("cc_pib", "Cuenta corriente / PIB (4 trimestres)", "cc_pib_4t", "pp", "INDEC, propio")
@@ -476,7 +554,7 @@ def agregar_etapa3(obj):
     cols, filas = leer_tabla(obj["mensual"])
     M = {r["mes"]: r for r in filas}
     _, inv = leer_tabla(obj["inv_trim"])
-    pib = {r["trimestre"]: num(r["pib_n"]) for r in inv}
+    pib = pib_nominal(inv)
     ultimo = filas[-1]["mes"]
     for archivo, dec in (("actividad_mensual.csv", 2), ("global_mensual.csv", 3), ("credito_mensual.csv", 0)):
         fcols, ffilas = leer_fuente(archivo)
@@ -628,6 +706,14 @@ def agregar_ultimos_e3(obj):
     fila("isac", "Construcción (ISAC)", "isac", "índice", "pct", "INDEC")
     fila("issp", "Servicios públicos (ISSP)", "issp", "índice", "pct", "INDEC")
     fila("credito_pib", "Crédito al sector privado / PIB", "credito_pib", "%", "dif", "BCRA e INDEC")
+    m = ultimo_con(M, "reservas")
+    for r in filas:
+        if r["id"] == "reservas" and m > r["periodo"]:
+            r.update(valor=M[m]["reservas"], periodo=m, periodo_txt=f"{MESES[int(m[5:]) - 1]} {m[:4]}")
+        if r["id"] == "tc":
+            t = ultimo_con(M, "tc_a3500")
+            if t > r["periodo"]:
+                r.update(valor=M[t]["tc_a3500"], periodo=t, periodo_txt=f"{MESES[int(t[5:]) - 1]} {t[:4]}")
     obj["ultimos"] = escribir_tabla(cols, filas)
 
 
@@ -638,6 +724,7 @@ def main():
     if args.actualizar_itcrm or not ITCRM_CSV.exists():
         bajar_itcrm()
     ini, obj, fin = leer_datos(BASE)
+    extender_filas(obj)
     corregir_comercio_rubros(obj)
     quitar_s68(obj)
     M = actualizar_mensual(obj)
@@ -650,6 +737,7 @@ def main():
     agregar_tablas_e2(obj)
     agregar_ultimos_e2(obj)
     agregar_etapa3(obj)
+    tabla_calendario(obj)
     SALIDA.write_text(ini + json.dumps(obj, ensure_ascii=False) + fin, encoding="utf-8", newline="\n")
     print(f"Escrito {SALIDA.relative_to(RAIZ)}")
 

@@ -40,7 +40,7 @@
   function resumen() {
     datos('deuda_resumen').forEach(function (f) {
       var el = document.querySelector('[data-resumen="' + f.indicador + '"]');
-      if (el) el.textContent = miles(f.valor, 1).concat(el.dataset.u || '');
+      if (el) el.textContent = f.indicador === 'corte' ? f.valor.split('-').reverse().join('/') : miles(f.valor, 1).concat(el.dataset.u || '');
     });
   }
   function curva() {
@@ -92,7 +92,25 @@
     var r = document.getElementById('sost-resumen');
     if (r) r.textContent = conteo['Mejoró'] + ' mejoraron, ' + conteo['Empeoró'] + ' empeoraron y ' + conteo['Sin cambios'] + ' no cambiaron';
   }
-  function iniciar() { perfil(); resumen(); curva(); sostenibilidad(); }
+  function calendarioDatos() {
+    var cuerpo = document.getElementById('tabla-cal-datos');
+    if (!cuerpo) return;
+    cuerpo.replaceChildren();
+    datos('calendario_datos').forEach(function (f) {
+      var tr = document.createElement('tr');
+      var th = document.createElement('th');
+      th.scope = 'row';
+      th.textContent = f.dato;
+      tr.appendChild(th);
+      celda(tr, f.origen);
+      celda(tr, f.frecuencia);
+      celda(tr, f.ultimo, 'n');
+      celda(tr, f.proxima, 'n');
+      celda(tr, f.estado);
+      cuerpo.appendChild(tr);
+    });
+  }
+  function iniciar() { perfil(); resumen(); curva(); sostenibilidad(); calendarioDatos(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar);
   else iniciar();
 })();

@@ -1,0 +1,30 @@
+{
+  "automaticas": [
+    {"id": "curva", "nombre": "Curva de tasas en pesos", "origen": "ArgentinaDatos", "frecuencia": "diaria", "archivo": "curva_pesos.csv", "fecha_col": "fecha", "regla": {"tipo": "diaria"}, "salidas": {"curva_pesos": ".*"}},
+    {"id": "bcra", "nombre": "BCRA: reservas, compras, dólares en bancos, pases", "origen": "API del BCRA", "frecuencia": "diaria en origen, cierre mensual en el tablero", "archivo": "bcra_mensual.csv", "regla": {"tipo": "mensual", "dia": 3, "rezago": 1}, "salidas": {"mensual": "^(res_|base_monetaria|dep_usd|prest_usd|pases|leliq|lebac|pasivos|tc_ref|reservas_ult|tc_a3500$|reservas$|pagos_me_reservas)", "trimestral": "^(compras_12m_t|cc_pib_4t)"}},
+    {"id": "credito", "nombre": "Crédito al sector privado", "origen": "API del BCRA", "frecuencia": "diaria en origen, cierre mensual en el tablero", "archivo": "credito_mensual.csv", "regla": {"tipo": "mensual", "dia": 3, "rezago": 1}, "salidas": {"mensual": "^(prestamos_priv|credito_pib)"}},
+    {"id": "itcrm", "nombre": "Tipo de cambio real multilateral", "origen": "BCRA", "frecuencia": "diaria en origen, promedio mensual en el tablero", "archivo": "itcrm_mensual.csv", "regla": {"tipo": "mensual", "dia": 3, "rezago": 1}, "salidas": {"mensual": "^(itcrm|itcrb)"}},
+    {"id": "global", "nombre": "Contexto global: granos, Brent, EE. UU. y Brasil", "origen": "FRED y Banco Central de Brasil", "frecuencia": "mensual", "archivo": "global_mensual.csv", "regla": {"tipo": "mensual", "dia": 20, "rezago": 2}, "salidas": {"mensual": "^(fed_funds|ust10|brent|soja|maiz|trigo|ibcbr|brl|selic)"}},
+    {"id": "deuda_mensual", "nombre": "Deuda: stock, moneda, acreedor y pagos", "origen": "Secretaría de Finanzas", "frecuencia": "mensual", "archivo": "deuda_mensual.csv", "regla": {"tipo": "mensual", "dia": 28, "rezago": 1}, "salidas": {"mensual": "^(deuda_|pagos_)"}},
+    {"id": "fiscal", "nombre": "Fiscal: ingresos, gastos e intereses", "origen": "Hacienda vía datos.gob.ar", "frecuencia": "mensual", "archivo": "fiscal_mensual.csv", "columna_clave": "f_gastos", "regla": {"tipo": "mensual", "dia": 25, "rezago": 2}, "salidas": {"mensual": "^(fis_|fg_)"}},
+    {"id": "series_mensuales", "nombre": "Empleo registrado y turismo", "origen": "Secretaría de Trabajo y BCRA vía datos.gob.ar", "frecuencia": "mensual", "archivo": "series_mensuales.csv", "regla": {"tipo": "mensual", "dia": 25, "rezago": 4}, "salidas": {"mensual": "^(emp_|viajes_)"}},
+    {"id": "actividad", "nombre": "Capacidad instalada, construcción y servicios públicos", "origen": "INDEC vía datos.gob.ar", "frecuencia": "mensual", "archivo": "actividad_mensual.csv", "regla": {"tipo": "mensual", "dia": 25, "rezago": 3}, "salidas": {"mensual": "^(uci|isac|issp)"}},
+    {"id": "series_trimestrales", "nombre": "Balance de pagos, posición internacional, subocupación e informalidad", "origen": "INDEC vía datos.gob.ar", "frecuencia": "trimestral", "archivo": "series_trimestrales.csv", "regla": {"tipo": "trimestral", "rezago_dias": 100}, "salidas": {"trimestral": "^(cc|cfin|errores|iip_|subocupacion|asal_sin_desc)"}},
+    {"id": "demanda", "nombre": "Demanda agregada y PIB", "origen": "INDEC vía datos.gob.ar", "frecuencia": "trimestral", "archivo": "demanda_trimestral.csv", "regla": {"tipo": "trimestral", "rezago_dias": 100}, "salidas": {"trimestral": "^(d_|ct_|p_expo|q_expo|cc_pib_4t)", "mensual": "^(fis_|fg_|credito_pib)"}},
+    {"id": "deuda_trim", "nombre": "Deuda: ratios y vencimientos", "origen": "Secretaría de Finanzas", "frecuencia": "trimestral", "archivo": "deuda_resumen.csv", "fila_fecha": "corte", "regla": {"tipo": "trimestral", "rezago_dias": 100}, "salidas": {"anual": "^(deuda_|intereses_|servicios_|vence_|vida_)", "deuda_perfil": ".*", "deuda_resumen": ".*"}}
+  ],
+  "pendientes": [
+    {"nombre": "Dólar oficial, paralelos, tasas y riesgo país", "origen": "BCRA y ArgentinaDatos", "frecuencia": "diaria en origen", "tabla": "mensual", "columna": "dolar_blue", "regla": {"tipo": "mensual", "dia": 3, "rezago": 1}},
+    {"nombre": "Inflación (IPC)", "origen": "INDEC", "frecuencia": "mensual", "tabla": "mensual", "columna": "infl_mensual", "regla": {"tipo": "mensual", "dia": 15, "rezago": 1}},
+    {"nombre": "Comercio exterior", "origen": "INDEC", "frecuencia": "mensual", "tabla": "comercio_paises", "columna": "x_tot", "regla": {"tipo": "mensual", "dia": 20, "rezago": 1}},
+    {"nombre": "Recaudación", "origen": "ARCA", "frecuencia": "mensual", "tabla": "inv_mensual", "columna": "der_imp", "regla": {"tipo": "mensual", "dia": 3, "rezago": 1}},
+    {"nombre": "Industria y construcción por sector (IPI)", "origen": "INDEC", "frecuencia": "mensual", "tabla": "sectores", "columna": "i00", "regla": {"tipo": "mensual", "dia": 10, "rezago": 2}},
+    {"nombre": "Actividad (EMAE)", "origen": "INDEC", "frecuencia": "mensual", "tabla": "mensual", "columna": "emae_desest", "regla": {"tipo": "mensual", "dia": 25, "rezago": 2}},
+    {"nombre": "Salarios", "origen": "INDEC", "frecuencia": "mensual", "tabla": "mensual", "columna": "sal_real", "regla": {"tipo": "mensual", "dia": 25, "rezago": 2}},
+    {"nombre": "Consumo por rubros", "origen": "INDEC", "frecuencia": "mensual", "tabla": "consumo_rubros", "columna": "sp00", "regla": {"tipo": "mensual", "dia": 25, "rezago": 2}},
+    {"nombre": "Empleo y desempleo (EPH)", "origen": "INDEC", "frecuencia": "trimestral", "tabla": "trimestral", "columna": "desempleo", "regla": {"tipo": "trimestral", "rezago_dias": 85}},
+    {"nombre": "Inversión e IED", "origen": "INDEC y BCRA", "frecuencia": "trimestral", "tabla": "inv_trim", "columna": "r_tot", "regla": {"tipo": "trimestral", "rezago_dias": 85}},
+    {"nombre": "Pobreza e indigencia", "origen": "INDEC", "frecuencia": "semestral", "tabla": "semestral", "columna": "pobreza_personas", "proxima_texto": "marzo y septiembre"},
+    {"nombre": "PIB per cápita y comparaciones internacionales", "origen": "Banco Mundial y Maddison", "frecuencia": "anual", "tabla": "anual", "columna": "pib_pc", "proxima_texto": "una vez por año"}
+  ]
+}

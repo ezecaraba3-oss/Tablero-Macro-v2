@@ -57,19 +57,19 @@ PERMITIDO = {
     "comercio_rubros": {("2026-06", "x00"), ("2026-08", "x00"), ("2026-08", "x01")},
     "inv_mensual": {(m, c) for m in ("2026-08", "2026-09") for c in ("impo", "ar_efec", "ar_efec_12m")},
     "comercio_anual": {("2026", c) for c in ("expo", "impo", "saldo", "cobertura", "meses", "periodo")},
-    "ultimos": {(k, c) for k in ("saldo_m", "saldo_12m", "expo_12m", "impo_12m", "cobertura") for c in ("valor", "periodo", "periodo_txt", "variacion")},
+    "ultimos": {(k, c) for k in ("saldo_m", "saldo_12m", "expo_12m", "impo_12m", "cobertura") for c in ("valor", "periodo", "periodo_txt", "variacion")} | {(k, c) for k in ("reservas", "tc") for c in ("valor", "periodo", "periodo_txt")},
 }
 COLUMNAS_LIBRES = {"mensual": {"tasa_real_personales", "tasa_real_personales_exante", "itcrm", "itcrb_bra", "itcrb_usa", "itcrb_chn", "itcrb_eur"}}
-control("conserva las tablas de la v1 y suma las nuevas", set(nuevo) - set(base) == {"deuda_perfil", "deuda_resumen", "curva_pesos", "sostenibilidad"} and set(base) <= set(nuevo))
+control("conserva las tablas de la v1 y suma las nuevas", set(nuevo) - set(base) == {"deuda_perfil", "deuda_resumen", "curva_pesos", "sostenibilidad", "calendario_datos"} and set(base) <= set(nuevo))
 inesperados = []
 total = 0
 for n in base:
     b, a = tabla(base, n), tabla(nuevo, n)
     if n == "sectores_meta":
         b = [r for r in b if r["clave"] != "s68"]
-    if n == "ultimos":
-        previos = {r["id"] for r in b}
-        a = [r for r in a if r["id"] in previos]
+    clave_t = list(b[0])[0]
+    previos = {r[clave_t] for r in b}
+    a = [r for r in a if r[clave_t] in previos]  # las filas nuevas no existen en la v1
     if len(b) != len(a):
         inesperados.append((n, "filas", len(b), len(a)))
         continue
@@ -136,8 +136,8 @@ control("tasa real ex ante con REM", cerca((tea / (1 + num(r["rem_12m"]) / 100) 
 
 # 5. ITCRM.
 itc = {m: num(x["itcrm"]) for m, x in M.items() if num(x["itcrm"])}
-control("ITCRM desde 1997 hasta oct 2026", min(itc) == "1997-01" and max(itc) == "2026-10", f"{min(itc)}..{max(itc)} n={len(itc)}")
-control("ITCRM sin huecos", len(itc) == (2026 - 1997) * 12 + 10)
+control("ITCRM desde 1997 hasta oct 2026 o más", min(itc) == "1997-01" and max(itc) >= "2026-10", f"{min(itc)}..{max(itc)} n={len(itc)}")
+control("ITCRM sin huecos", len(itc) == (int(max(itc)[:4]) - 1997) * 12 + int(max(itc)[5:]))
 control("ITCRM en rango razonable", 30 < min(itc.values()) and max(itc.values()) < 300, f"min={min(itc.values())} max={max(itc.values())}")
 
 # 6. Etapa 2: identidades contables.
@@ -146,8 +146,9 @@ def fuente(n):
 
 
 meses_d = [m for m, x in M.items() if num(x["deuda_bruta"])]
-control("deuda desde ene 2019 hasta sep 2026", min(meses_d) == "2019-01" and max(meses_d) == "2026-09", f"{min(meses_d)}..{max(meses_d)}")
-control("el último dato de deuda es el publicado", cerca(num(M["2026-09"]["deuda_bruta"]), 486627.5, 0.1))
+control("deuda desde ene 2019 hasta sep 2026 o más", min(meses_d) == "2019-01" and max(meses_d) >= "2026-09", f"{min(meses_d)}..{max(meses_d)}")
+dm = fuente("deuda_mensual.csv")
+control("el último dato de deuda es el de la fuente", cerca(num(M[max(meses_d)]["deuda_bruta"]), num(dm[-1]["deuda_bruta"]), 0.1))
 mal = [m for m in meses_d if not cerca(num(M[m]["deuda_ley_arg"]) + num(M[m]["deuda_ley_ext"]), num(M[m]["deuda_bruta"]), 2)]
 control("deuda por legislación = deuda bruta", not mal, str(mal[:5]))
 partes = ["deuda_ars_fija", "deuda_ars_cer", "deuda_usd", "deuda_eur", "deuda_jpy", "deuda_deg", "deuda_otras"]
@@ -167,7 +168,7 @@ F = fuente("fiscal_mensual.csv")
 mal = [r["mes"] for r in F if not cerca(num(r["f_ingresos"]) - num(r["f_gastos"]), num(r["f_financiero"]), 5)]
 control("fiscal: ingresos − gastos = resultado financiero", not mal, f"{len(mal)} meses {mal[:5]}")
 fm = {m: x for m, x in M.items() if num(x["fis_financiero_pib"]) is not None}
-control("fiscal llega al último PIB (jun 2026)", max(fm) == "2026-06", max(fm))
+control("fiscal llega a jun 2026 o más", max(fm) >= "2026-06", max(fm))
 mal = [m for m, x in fm.items() if not cerca(num(x["fis_ingresos_pib"]) - num(x["fis_gastos_pib"]), num(x["fis_financiero_pib"]), 0.02)]
 control("fiscal / PIB cierra", not mal, str(mal[:5]))
 partes_g = ["fg_prestaciones", "fg_transf_priv", "fg_remuneraciones", "fg_bienes_serv", "fg_provincias", "fg_universidades", "fg_capital", "fg_resto", "fis_intereses_pib"]
@@ -179,6 +180,8 @@ prim_v1 = {m: num(x["res_primario_pib_12m"]) for m, x in fm.items() if num(x["re
 dif = {m: abs(num(fm[m]["fis_superavit_pib"]) - v) for m, v in prim_v1.items()}
 peor = max(dif, key=dif.get)
 control("superávit primario = resultado primario de la v1", dif[peor] <= 0.02, f"dif máx {dif[peor]:.3f} pp en {peor}; jun 2026: {fm['2026-06']['fis_superavit_pib']} vs {prim_v1['2026-06']}")
+cal_d = tabla(nuevo, "calendario_datos")
+control("calendario completo", len(cal_d) == 24 and sum(x["estado"] == "Automática" for x in cal_d) == 12, str(len(cal_d)))
 control("resultado financiero 2025 plausible", -1 < num(M["2025-12"]["fis_financiero_pib"]) < 1, M["2025-12"]["fis_financiero_pib"])
 control("ingresos / PIB plausibles", all(10 < num(x["fis_ingresos_pib"]) < 30 for x in fm.values()), M["2025-12"]["fis_ingresos_pib"])
 
@@ -195,7 +198,8 @@ ult_e = max(ms)
 sum_emp = sum(num(ms[ult_e][c]) for c in ["emp_privado", "emp_publico", "emp_casas", "emp_autonomos", "emp_monotributo", "emp_mono_social"])
 control("empleo: las categorías suman cerca del total", abs(sum_emp / num(ms[ult_e]["emp_total"]) - 1) < 0.02, f"{sum_emp:.0f} vs {ms[ult_e]['emp_total']}")
 res = {m: x for m, x in M.items() if num(x["res_compras"]) is not None}
-control("BCRA sin meses posteriores a la tabla", max(res) <= "2026-10", max(res))
+import datetime as dt
+control("BCRA solo con meses cerrados", max(res) < dt.date.today().strftime("%Y-%m"), max(res))
 kp = {r["id"] for r in tabla(nuevo, "ultimos")}
 control("indicadores nuevos presentes", {"deuda_bruta", "deuda_pib", "cc_4t", "iip", "fis_fin", "emp_total", "compras_12m"} <= kp)
 

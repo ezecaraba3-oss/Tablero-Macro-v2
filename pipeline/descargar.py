@@ -1,9 +1,12 @@
-"""Baja las fuentes de la etapa 2 y las guarda en pipeline/fuentes/.
+"""Baja fuentes y las guarda en pipeline/fuentes/.
 
-    python pipeline/descargar.py
+    python pipeline/descargar.py            todas
+    python pipeline/descargar.py fiscal     solo las indicadas (ver FUENTES_POR_ID)
 
-Las URL de la Secretaría de Finanzas cambian con cada publicación: al actualizar,
-hay que renovar DEUDA_MENSUAL_URL y DEUDA_TRIM_URL con los enlaces de
+Para el uso diario está pipeline/actualizar.py, que baja solo lo vencido.
+
+Las URL de la Secretaría de Finanzas cambian con cada publicación: se buscan en estas
+páginas, y DEUDA_MENSUAL_URL y DEUDA_TRIM_URL quedan como respaldo:
 https://www.argentina.gob.ar/economia/finanzas/datos-mensuales y
 https://www.argentina.gob.ar/economia/finanzas/datos-trimestrales-de-la-deuda
 """
@@ -62,7 +65,7 @@ SERIES_FISCAL = {
     "f_capital_otras": "379.9_GTOS_CAP_T017__27_3", "f_capital_resto": "379.9_GTOS_CAP_R017__19_90",
 }
 BCRA_FLUJO = {"res_compras": 78, "res_organismos": 79, "res_sector_publico": 80, "res_encajes": 81, "res_otras": 82}
-BCRA_STOCK = {"base_monetaria": 15, "dep_usd_priv": 108, "prest_usd_priv": 125, "pases_pasivos": 152, "leliq": 155, "lebac_bopreal": 158}
+BCRA_STOCK = {"reservas_ult": 1, "base_monetaria": 15, "dep_usd_priv": 108, "prest_usd_priv": 125, "pases_pasivos": 152, "leliq": 155, "lebac_bopreal": 158}
 
 
 def bajar(url, timeout=120):
@@ -162,8 +165,17 @@ def serie_fila(hoja, etiqueta, cols, desde=0, col_etiqueta=None):
     sys.exit(f"No encontré la fila «{etiqueta}» en la planilla de deuda")
 
 
+def enlace(pagina, patron, defecto):
+    """Busca el archivo vigente en la página oficial: el nombre cambia con cada publicación."""
+    try:
+        m = re.search(patron, bajar(pagina).decode("utf-8", "replace"))
+        return m.group(0) if m else defecto
+    except Exception:
+        return defecto
+
+
 def deuda_mensual():
-    h = libro(bajar(DEUDA_MENSUAL_URL))
+    h = libro(bajar(enlace("https://www.argentina.gob.ar/economia/finanzas/datos-mensuales", r"https://[^\"']+boletin_mensual[^\"']+\.xlsx", DEUDA_MENSUAL_URL)))
     a1, a2, a3, a5 = h["A.1"], h["A.2"], h["A.3"], h["A.5"]
     c1, c2, c3, c5 = columnas_mes(a1), columnas_mes(a2), columnas_mes(a3), columnas_mes(a5)
     fila_comp = next(r for r, v in a3.items() if "COMPOSICIÓN POR MONEDA" in " ".join(map(str, v.values())))
@@ -198,7 +210,10 @@ def deuda_mensual():
 
 
 def deuda_trimestral():
-    h = libro(bajar(DEUDA_TRIM_URL))
+    url = enlace("https://www.argentina.gob.ar/economia/finanzas/datos-trimestrales-de-la-deuda", r"https://[^\"']+deuda_publica_\d{2}-\d{2}-\d{4}[^\"']*\.xlsx", DEUDA_TRIM_URL)
+    m = re.search(r"deuda_publica_(\d{2})-(\d{2})-(\d{4})", url)
+    corte = f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    h = libro(bajar(url))
     # Indicadores de sostenibilidad (anuales)
     s = h["A.4.7"]
     anios = {c: re.match(r"\s*(\d{4})", str(v)).group(1) for c, v in s[8].items() if c >= 3 and re.match(r"\s*\d{4}", str(v))}
@@ -226,7 +241,7 @@ def deuda_trimestral():
     tasas = h["A.1.5"]
     resumen = {"tasa_promedio": float(tasas[11][2]) * 100, "tasa_ars_fija": float(tasas[13][2]) * 100, "tasa_ars_cer": float(tasas[20][2]) * 100,
                "tasa_usd": float(tasas[27][2]) * 100, "tasa_fmi_deg": float(tasas[43][2]) * 100, "vida_promedio": float(h["A.1.6"][12][2])}
-    return anual, perfil, resumen
+    return anual, perfil, resumen, corte
 
 
 def guardar(nombre, columnas, filas):
@@ -246,7 +261,7 @@ def a_filas(series, clave):
 # Etapa 3
 SERIES_DEMANDA = {
     "d_pib": "4.2_OGP_2004_T_17", "d_cons_priv": "4.2_MGCP_2004_T_25", "d_cons_pub": "4.2_DGCP_2004_T_30", "d_ibif": "4.2_DGIT_2004_T_25",
-    "d_expo": "4.2_DGE_2004_T_26", "d_impo": "4.2_OGI_2004_T_25", "d_existencias": "4.2_VE_2004_T_21",
+    "d_expo": "4.2_DGE_2004_T_26", "d_impo": "4.2_OGI_2004_T_25", "d_existencias": "4.2_VE_2004_T_21", "pib_n": "4.4_OGP_2004_T_17",
     "p_expo": "80.2_IIPENG_0_T_45", "q_expo": "80.2_IICENG_0_T_47",
 }
 SERIES_ACTIVIDAD = {
@@ -275,19 +290,84 @@ def bcb(serie):
     return {f"{x['data'][6:10]}-{x['data'][3:5]}": float(x["valor"]) for x in d if x["valor"] not in ("", None)}
 
 
-def etapa3():
+def cerrados(serie):
+    """Deja solo meses terminados: un mes en curso cambiaría todos los días."""
+    actual = dt.date.today().strftime("%Y-%m")
+    return {m: v for m, v in serie.items() if m < actual}
+
+
+def d_fiscal():
+    d = api(SERIES_FISCAL)
+    guardar("fiscal_mensual.csv", ["mes", *d], a_filas(d, "mes"))
+
+
+def d_series_mensuales():
+    d = api(SERIES_MES)
+    guardar("series_mensuales.csv", ["mes", *d], a_filas(d, "mes"))
+
+
+def d_series_trimestrales():
+    d = api(SERIES_TRIM)
+    trim = {c: {f"{m[:4]}-T{(int(m[5:]) + 2) // 3}": v for m, v in s.items()} for c, s in d.items()}
+    guardar("series_trimestrales.csv", ["trimestre", *trim], a_filas(trim, "trimestre"))
+
+
+def d_deuda_mensual():
+    d = deuda_mensual()
+    guardar("deuda_mensual.csv", ["mes", *d], a_filas(d, "mes"))
+
+
+def d_deuda_trim():
+    anual, perfil, resumen, corte = deuda_trimestral()
+    guardar("deuda_anual.csv", ["anio", *anual], a_filas(anual, "anio"))
+    guardar("deuda_perfil.csv", ["anio", "capital", "interes", "total"], perfil)
+    guardar("deuda_resumen.csv", ["indicador", "valor"], [{"indicador": k, "valor": round(v, 3)} for k, v in resumen.items()] + [{"indicador": "corte", "valor": corte}])
+
+
+def d_bcra():
+    mes = {}
+    for c, idv in BCRA_FLUJO.items():
+        acum = {}
+        for f, v in bcra(idv):
+            acum[f[:7]] = acum.get(f[:7], 0) + v
+        mes[c] = cerrados(acum)
+    for c, idv in BCRA_STOCK.items():
+        ult = {}
+        for f, v in bcra(idv):
+            ult[f[:7]] = v
+        mes[c] = cerrados(ult)
+    grupos = {}
+    for f, v in bcra(5):
+        grupos.setdefault(f[:7], []).append(v)
+    mes["tc_ref"] = cerrados({m: sum(v) / len(v) for m, v in grupos.items()})
+    guardar("bcra_mensual.csv", ["mes", *mes], a_filas(mes, "mes"))
+
+
+def d_demanda():
     d = api(SERIES_DEMANDA)
     trim = {c: {f"{m[:4]}-T{(int(m[5:]) + 2) // 3}": v for m, v in s.items()} for c, s in d.items()}
     guardar("demanda_trimestral.csv", ["trimestre", *trim], a_filas(trim, "trimestre"))
+
+
+def d_actividad():
     d = api(SERIES_ACTIVIDAD)
     guardar("actividad_mensual.csv", ["mes", *d], a_filas(d, "mes"))
-    glob = {c: fred(s) for c, s in FRED.items()}
-    glob.update({c: bcb(s) for c, s in BCB.items()})
+
+
+def d_global():
+    glob = {c: cerrados(fred(s)) for c, s in FRED.items()}
+    glob.update({c: cerrados(bcb(s)) for c, s in BCB.items()})
     guardar("global_mensual.csv", ["mes", *glob], a_filas(glob, "mes"))
+
+
+def d_credito():
     cred = {}
     for f, v in bcra(26):
         cred[f[:7]] = v
-    guardar("credito_mensual.csv", ["mes", "prestamos_priv"], a_filas({"prestamos_priv": cred}, "mes"))
+    guardar("credito_mensual.csv", ["mes", "prestamos_priv"], a_filas({"prestamos_priv": cerrados(cred)}, "mes"))
+
+
+def d_curva():
     letras = json.loads(bajar(LETRAS_URL))
     fecha = letras["fechaActualizacion"][:10]
     guardar("curva_pesos.csv", ["ticker", "vencimiento", "dias", "tem", "tea", "precio", "fecha"],
@@ -295,41 +375,20 @@ def etapa3():
               "precio": x["precioArs"], "fecha": fecha} for x in sorted(letras["letras"], key=lambda y: y["diasAlVencimiento"])])
 
 
+def d_itcrm():
+    import construir
+    construir.bajar_itcrm()
+
+
+FUENTES_POR_ID = {"curva": d_curva, "bcra": d_bcra, "credito": d_credito, "itcrm": d_itcrm, "global": d_global, "deuda_mensual": d_deuda_mensual, "fiscal": d_fiscal,
+                  "series_mensuales": d_series_mensuales, "actividad": d_actividad, "series_trimestrales": d_series_trimestrales, "demanda": d_demanda, "deuda_trim": d_deuda_trim}
+
+
 def main():
     FUENTES.mkdir(parents=True, exist_ok=True)
-    if "--etapa3" in sys.argv:
-        etapa3()
-        return
-    d = api(SERIES_FISCAL)
-    guardar("fiscal_mensual.csv", ["mes", *d], a_filas(d, "mes"))
-
-    d = api(SERIES_MES)
-    guardar("series_mensuales.csv", ["mes", *d], a_filas(d, "mes"))
-
-    d = api(SERIES_TRIM)
-    trim = {c: {f"{m[:4]}-T{(int(m[5:]) + 2) // 3}": v for m, v in s.items()} for c, s in d.items()}
-    guardar("series_trimestrales.csv", ["trimestre", *trim], a_filas(trim, "trimestre"))
-
-    d = deuda_mensual()
-    guardar("deuda_mensual.csv", ["mes", *d], a_filas(d, "mes"))
-    anual, perfil, resumen = deuda_trimestral()
-    guardar("deuda_anual.csv", ["anio", *anual], a_filas(anual, "anio"))
-    guardar("deuda_perfil.csv", ["anio", "capital", "interes", "total"], perfil)
-    guardar("deuda_resumen.csv", ["indicador", "valor"], [{"indicador": k, "valor": round(v, 3)} for k, v in resumen.items()])
-
-    mes = {}
-    for c, idv in BCRA_FLUJO.items():
-        acum = {}
-        for f, v in bcra(idv):
-            acum[f[:7]] = acum.get(f[:7], 0) + v
-        mes[c] = acum
-    for c, idv in BCRA_STOCK.items():
-        ult = {}
-        for f, v in bcra(idv):
-            ult[f[:7]] = v
-        mes[c] = ult
-    guardar("bcra_mensual.csv", ["mes", *mes], a_filas(mes, "mes"))
-    etapa3()
+    elegidas = sys.argv[1:] or list(FUENTES_POR_ID)
+    for f in elegidas:
+        FUENTES_POR_ID[f]()
 
 
 if __name__ == "__main__":

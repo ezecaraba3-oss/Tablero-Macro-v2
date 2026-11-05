@@ -1,5 +1,18 @@
 # Proceso de datos
 
+## Actualización diaria
+
+Una tarea de GitHub (`.github/workflows/actualizar.yml`) corre todos los días a las 9:00 de Argentina, revisa `calendario.json` y baja solo las fuentes vencidas. Si una fuente demora, se revisa a diario, y tras 30 días de atraso, solo los lunes. Publica únicamente si hay datos nuevos y pasan todos los controles. Si cambia algo que no le corresponde a esa fuente, cancela y restaura los archivos.
+
+```
+python pipeline/actualizar.py                       # actualiza lo que toca hoy
+python pipeline/actualizar.py --simular 2026-12-05  # muestra qué tocaría esa fecha, sin cambiar nada
+```
+
+`CALENDARIO.md` y la tarjeta «Cuándo se actualiza cada dato» muestran el estado de cada fuente. Las marcadas como pendientes todavía no tienen descarga automática.
+
+## Comandos individuales
+
 Requiere Python 3, sin paquetes adicionales. Se corre desde la raíz del repo:
 
 ```
@@ -19,6 +32,6 @@ python pipeline/verificar_pagina.py              # abre cada sección en Edge o 
 
 Se descargan automáticamente el ITCRM y todas las series de la etapa 2. Las series de la v1 siguen saliendo de la base congelada, porque ese repo no incluye sus scripts de descarga. Para actualizarlas hay que sumarlas a `descargar.py`.
 
-Las URL de la Secretaría de Finanzas cambian con cada publicación: hay que renovarlas al comienzo de `descargar.py`. Al actualizar, también hay que revisar los controles con valores fijos de `auditar.py`, como el último dato de deuda.
+Las URL de la Secretaría de Finanzas se buscan en sus páginas oficiales; las de `descargar.py` quedan como respaldo.
 
 Las correcciones apuntan a meses concretos de 2026 y 2017. Al renovar la base hay que revisarlas, y también la lista de cambios permitidos de `auditar.py`.
