@@ -269,7 +269,7 @@ def pib_nominal(inv):
 def extender_filas(obj):
     """Suma filas para los períodos nuevos. Las series que no tienen ese dato quedan vacías."""
     meses = set()
-    for archivo in ("deuda_mensual.csv", "bcra_mensual.csv", "series_mensuales.csv", "fiscal_mensual.csv", "actividad_mensual.csv", "global_mensual.csv", "credito_mensual.csv", "itcrm_mensual.csv"):
+    for archivo in ("deuda_mensual.csv", "bcra_mensual.csv", "series_mensuales.csv", "fiscal_mensual.csv", "actividad_mensual.csv", "global_mensual.csv", "credito_mensual.csv", "itcrm_mensual.csv", "mercado_mensual.csv", "precios_mensual.csv"):
         meses |= {r["mes"] for r in leer_fuente(archivo)[1]}
     cols, filas = leer_tabla(obj["mensual"])
     ultimo = filas[-1]["mes"]
@@ -292,6 +292,98 @@ def extender_filas(obj):
     for a in sorted({r["anio"] for r in leer_fuente("deuda_anual.csv")[1]} - existentes):
         filas.append({**{c: "" for c in cols}, "anio": a, "fecha": f"{a}-07"})
     obj["anual"] = escribir_tabla(cols, filas)
+
+
+def aplicar_mercado(obj):
+    """Cierra los meses con el dato completo y deriva las columnas con el método de la v1."""
+    cols, filas = leer_tabla(obj["mensual"])
+    M = {r["mes"]: r for r in filas}
+    _, mf = leer_fuente("mercado_mensual.csv")
+    for f in mf:
+        r = M.get(f["mes"])
+        if r is None:
+            continue
+        for c in ("tc_a3500", "reservas", "badlar", "tasa_pf30", "tasa_personales", "banda_inf", "banda_sup", "dolar_blue", "dolar_ccl", "riesgo_pais"):
+            if num(f[c]) is not None:
+                r[c] = fmt(num(f[c]), 3)
+        tc = num(f["tc_a3500"])
+        if tc is None:
+            continue
+        for col, base in (("tc_m", 1), ("tc_ia", 12)):
+            prev = num(M[mover_mes(f["mes"], -base)]["tc_a3500"])
+            r[col] = fmt((tc / prev - 1) * 100, 4)
+        for col, origen in (("brecha_ccl", "dolar_ccl"), ("brecha_mep", "dolar_mep"), ("brecha_blue", "dolar_blue")):
+            if num(f[origen]) is not None:
+                r[col] = fmt((num(f[origen]) / tc - 1) * 100, 4)
+        if num(f["tasa_pf30"]) is not None:
+            r["tem_pf"] = fmt(num(f["tasa_pf30"]) * 30 / 365, 5)
+            ant = M[mover_mes(f["mes"], -1)]
+            if r["pf_index"] == "":  # depende del mes anterior: un valor ya cerrado no cambia
+                r["pf_index"] = fmt(num(ant["pf_index"]) * (1 + num(ant["tem_pf"]) / 100), 3)
+        if num(f["banda_sup"]) is not None:
+            r["dist_techo"] = fmt((num(f["banda_sup"]) / tc - 1) * 100, 4)
+            r["dist_piso"] = fmt((tc / num(f["banda_inf"]) - 1) * 100, 4)
+    # Inflación: encadena el índice y actualiza lo que depende de él.
+    _, pf = leer_fuente("precios_mensual.csv")
+    for f in pf:
+        r = M.get(f["mes"])
+        if r is None or r["ipc_index"] != "":
+            continue
+        infl = num(f["infl_mensual"])
+        if infl is None:
+            continue
+        prev = M[mover_mes(f["mes"], -1)]
+        r["infl_mensual"] = fmt(infl, 1)
+        r["infl_ia"] = fmt(num(f["infl_ia"]), 1)
+        r["ipc_index"] = fmt(num(prev["ipc_index"]) * (1 + infl / 100), 3)
+        if num(f["rem_12m"]) is not None:
+            r["rem_12m"] = fmt(num(f["rem_12m"]), 1)
+        atras = M.get(mover_mes(f["mes"], -12))
+        if atras is not None:
+            atras["infl_12m_despues"] = fmt(num(f["infl_ia"]), 1)
+        tem = num(r["tem_pf"])
+        if tem is not None:
+            r["tasa_real_pf_m"] = fmt(((1 + tem / 100) / (1 + infl / 100) - 1) * 100, 6)
+            if num(r["rem_12m"]) is not None:
+                r["tasa_real_pf_exante"] = fmt(((1 + tem / 100) ** (365 / 30) / (1 + num(r["rem_12m"]) / 100) - 1) * 100, 4)
+    ultimo_ipc = max(m for m, r in M.items() if num(r["ipc_index"]) is not None)
+    if ultimo_ipc > "2026-09":
+        ipc_u = num(M[ultimo_ipc]["ipc_index"])
+        ref = M["2026-09"]
+        k = num(ref["tc_real_index"]) / (num(ref["tc_a3500"]) / num(ref["ipc_index"]))
+        for r in filas:
+            i, t = num(r["ipc_index"]), num(r["tc_a3500"])
+            if i and t:
+                r["tc_pesos_hoy"] = fmt(t * ipc_u / i, 2)
+                if r["mes"] > "2026-09":
+                    r["tc_real_index"] = fmt(t / i * k, 3)
+    obj["mensual"] = escribir_tabla(cols, filas)
+
+
+def actualizar_kpi_mercado(obj):
+    cols, filas = leer_tabla(obj["ultimos"])
+    _, mf = leer_tabla(obj["mensual"])
+    M = {r["mes"]: r for r in mf}
+    mapa = {"infl_m": "infl_mensual", "infl_ia": "infl_ia", "rem_12m": "rem_12m", "tasa_real": "tasa_real_pf_m", "tc": "tc_a3500", "brecha_ccl": "brecha_ccl", "riesgo": "riesgo_pais", "reservas": "reservas"}
+    for r in filas:
+        col = mapa.get(r["id"])
+        if not col:
+            continue
+        m = ultimo_con(M, col)
+        a = num(M[m][col])
+        previo_m = num(M.get(mover_mes(m, -1), {}).get(col))
+        previo_a = num(M.get(mover_mes(m, -12), {}).get(col))
+        txt = r["variacion_txt"]
+        r.update(valor=fmt(a, 2), periodo=m, periodo_txt=f"{MESES[int(m[5:]) - 1]} {m[:4]}")
+        if txt in ("pp vs mes anterior", "pb vs mes anterior") and previo_m is not None:
+            r["variacion"] = fmt(a - previo_m, 2)
+        elif txt == "% interanual" and previo_a:
+            r["variacion"] = fmt((a / previo_a - 1) * 100, 2)
+        elif txt == "pp interanual" and previo_a is not None:
+            r["variacion"] = fmt(a - previo_a, 2)
+        if r["id"] == "tasa_real":
+            r["variacion_txt"] = "positiva: el plazo fijo le gana a la inflación" if a > 0 else "negativa: la inflación le gana al plazo fijo"
+    obj["ultimos"] = escribir_tabla(cols, filas)
 
 
 def tabla_calendario(obj):
@@ -725,6 +817,7 @@ def main():
         bajar_itcrm()
     ini, obj, fin = leer_datos(BASE)
     extender_filas(obj)
+    aplicar_mercado(obj)
     corregir_comercio_rubros(obj)
     quitar_s68(obj)
     M = actualizar_mensual(obj)
@@ -737,6 +830,8 @@ def main():
     agregar_tablas_e2(obj)
     agregar_ultimos_e2(obj)
     agregar_etapa3(obj)
+    actualizar_kpi_mercado(obj)
+    obj["diario"] = escribir_tabla(*leer_fuente("diario.csv"))
     tabla_calendario(obj)
     SALIDA.write_text(ini + json.dumps(obj, ensure_ascii=False) + fin, encoding="utf-8", newline="\n")
     print(f"Escrito {SALIDA.relative_to(RAIZ)}")

@@ -2,7 +2,7 @@
 
 ## Actualización diaria
 
-Una tarea de GitHub (`.github/workflows/actualizar.yml`) corre todos los días a las 9:00 de Argentina, revisa `calendario.json` y baja solo las fuentes vencidas. Si una fuente demora, se revisa a diario, y tras 30 días de atraso, solo los lunes. Publica únicamente si hay datos nuevos y pasan todos los controles. Si cambia algo que no le corresponde a esa fuente, cancela y restaura los archivos.
+Una tarea de GitHub (`.github/workflows/actualizar.yml`) corre una vez por día a las 18:00 de Argentina. Los datos diarios se actualizan en esa corrida los días hábiles; los mensuales y trimestrales entran en la misma corrida solo el día en que les toca, según `calendario.json`. Si una fuente demora, se revisa a diario, y tras 30 días de atraso, solo los lunes. Publica únicamente si hay datos nuevos y pasan todos los controles. Si cambia algo que no le corresponde a esa fuente, cancela y restaura los archivos.
 
 ```
 python pipeline/actualizar.py                       # actualiza lo que toca hoy

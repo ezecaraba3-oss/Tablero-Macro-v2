@@ -110,7 +110,26 @@
       cuerpo.appendChild(tr);
     });
   }
-  function iniciar() { perfil(); resumen(); curva(); sostenibilidad(); calendarioDatos(); }
+  function diario() {
+    var cuerpo = document.getElementById('tabla-diario');
+    if (!cuerpo) return;
+    cuerpo.replaceChildren();
+    datos('diario').forEach(function (f) {
+      var tr = document.createElement('tr');
+      var th = document.createElement('th');
+      th.scope = 'row';
+      th.textContent = f.indicador;
+      tr.appendChild(th);
+      var dec = f.unidad === 'M US$' || f.unidad === 'pb' ? 0 : 2;
+      var pre = f.unidad === '$' ? '$ ' : '';
+      var suf = f.unidad === '$' ? '' : (f.unidad === '%' ? '%' : ' ' + f.unidad);
+      celda(tr, pre + miles(f.valor, dec) + suf, 'n');
+      celda(tr, pre + miles(f.previo, dec) + suf, 'n');
+      celda(tr, f.fecha.split('-').reverse().join('/'), 'n');
+      cuerpo.appendChild(tr);
+    });
+  }
+  function iniciar() { perfil(); resumen(); curva(); sostenibilidad(); calendarioDatos(); diario(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar);
   else iniciar();
 })();

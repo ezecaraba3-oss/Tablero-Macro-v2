@@ -6,6 +6,7 @@ de cambios permitidos se considera un error.
 import csv
 import io
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -53,14 +54,16 @@ nuevo = leer(RAIZ / "assets" / "datos.js")
 PERMITIDO = {
     "mensual": {("2026-08", c) for c in ["expo", "impo", "saldo_neto", "expo_12m", "impo_12m", "saldo_12m", "saldo_neto_12m", "cobertura_12m", "expo_ia_12m", "impo_ia_12m"]}
     | {("2026-09", c) for c in ["expo", "impo", "saldo_neto", "expo_12m", "impo_12m", "saldo_12m", "saldo_neto_12m", "cobertura_12m", "expo_ia_12m", "impo_ia_12m"]}
-    | {(m, c) for m in ("2017-01", "2017-02") for c in ("infl_mensual", "tasa_real_pf_m")},
+    | {(m, c) for m in ("2017-01", "2017-02") for c in ("infl_mensual", "tasa_real_pf_m")}
+    # Octubre de 2026 estaba incompleto en la v1: se reemplaza por el cierre del mes.
+    | {("2026-10", c) for c in ("tc_a3500", "reservas", "badlar", "tasa_pf30", "tasa_personales", "banda_inf", "banda_sup", "dolar_blue", "dolar_ccl", "riesgo_pais", "tc_m", "tc_ia", "brecha_ccl", "brecha_mep", "brecha_blue", "tem_pf", "dist_techo", "dist_piso")},
     "comercio_rubros": {("2026-06", "x00"), ("2026-08", "x00"), ("2026-08", "x01")},
     "inv_mensual": {(m, c) for m in ("2026-08", "2026-09") for c in ("impo", "ar_efec", "ar_efec_12m")},
     "comercio_anual": {("2026", c) for c in ("expo", "impo", "saldo", "cobertura", "meses", "periodo")},
-    "ultimos": {(k, c) for k in ("saldo_m", "saldo_12m", "expo_12m", "impo_12m", "cobertura") for c in ("valor", "periodo", "periodo_txt", "variacion")} | {(k, c) for k in ("reservas", "tc") for c in ("valor", "periodo", "periodo_txt")},
+    "ultimos": {(k, c) for k in ("saldo_m", "saldo_12m", "expo_12m", "impo_12m", "cobertura") for c in ("valor", "periodo", "periodo_txt", "variacion")} | {(k, c) for k in ("reservas", "tc", "infl_m", "infl_ia", "rem_12m", "tasa_real", "brecha_ccl", "riesgo") for c in ("valor", "periodo", "periodo_txt", "variacion", "variacion_txt")},
 }
-COLUMNAS_LIBRES = {"mensual": {"tasa_real_personales", "tasa_real_personales_exante", "itcrm", "itcrb_bra", "itcrb_usa", "itcrb_chn", "itcrb_eur"}}
-control("conserva las tablas de la v1 y suma las nuevas", set(nuevo) - set(base) == {"deuda_perfil", "deuda_resumen", "curva_pesos", "sostenibilidad", "calendario_datos"} and set(base) <= set(nuevo))
+COLUMNAS_LIBRES = {"mensual": {"tc_pesos_hoy", "tasa_real_personales", "tasa_real_personales_exante", "itcrm", "itcrb_bra", "itcrb_usa", "itcrb_chn", "itcrb_eur"}}
+control("conserva las tablas de la v1 y suma las nuevas", set(nuevo) - set(base) == {"deuda_perfil", "deuda_resumen", "curva_pesos", "sostenibilidad", "calendario_datos", "diario"} and set(base) <= set(nuevo))
 inesperados = []
 total = 0
 for n in base:
@@ -84,6 +87,8 @@ for n in base:
                 continue
             if rb.get(c) != ra.get(c):
                 total += 1
+                if not rb.get(c) and n == "mensual" and rb[clave] >= "2025-10":
+                    continue  # completar celdas vacías recientes no pisa datos de la v1
                 if (rb[clave], c) not in PERMITIDO.get(n, ()):
                     inesperados.append((n, rb[clave], c, rb.get(c), ra.get(c)))
 control("no cambió ninguna celda fuera de lo permitido", not inesperados, f"celdas cambiadas={total}; inesperadas={inesperados[:5]}")
@@ -181,7 +186,7 @@ dif = {m: abs(num(fm[m]["fis_superavit_pib"]) - v) for m, v in prim_v1.items()}
 peor = max(dif, key=dif.get)
 control("superávit primario = resultado primario de la v1", dif[peor] <= 0.02, f"dif máx {dif[peor]:.3f} pp en {peor}; jun 2026: {fm['2026-06']['fis_superavit_pib']} vs {prim_v1['2026-06']}")
 cal_d = tabla(nuevo, "calendario_datos")
-control("calendario completo", len(cal_d) == 24 and sum(x["estado"] == "Automática" for x in cal_d) == 12, str(len(cal_d)))
+control("calendario completo", len(cal_d) == 25 and sum(x["estado"] == "Automática" for x in cal_d) == 15, str(len(cal_d)))
 control("resultado financiero 2025 plausible", -1 < num(M["2025-12"]["fis_financiero_pib"]) < 1, M["2025-12"]["fis_financiero_pib"])
 control("ingresos / PIB plausibles", all(10 < num(x["fis_ingresos_pib"]) < 30 for x in fm.values()), M["2025-12"]["fis_ingresos_pib"])
 
@@ -232,8 +237,18 @@ fuente_c = {r["mes"]: num(r["prestamos_priv"]) for r in fuente("credito_mensual.
 mal = [m for m, x in M.items() if num(x["prestamos_priv"]) and not cerca(num(x["prestamos_priv"]), fuente_c[m], 1)]
 control("préstamos iguales a la fuente", not mal, str(mal[:5]))
 fila_r = next(x for x in sost if x["indicador"] == "Riesgo país")
-control("sostenibilidad: riesgo país coherente", cerca(num(fila_r["valor"]), num(M["2026-10"]["riesgo_pais"]), 1), fila_r["valor"])
+ult_r = max(m for m, x in M.items() if num(x["riesgo_pais"]) is not None)
+control("sostenibilidad: riesgo país coherente", cerca(num(fila_r["valor"]), num(M[ult_r]["riesgo_pais"]), 1), fila_r["valor"])
 control("curva sin rendimientos negativos", all(num(x["tem"]) > 0 for x in curva))
+
+# Mercado: el método debe reproducir la v1 y el cierre de octubre, la fuente.
+mm = {x["mes"]: x for x in fuente("mercado_mensual.csv")}
+control("octubre cerrado con el dato completo", cerca(num(M["2026-10"]["reservas"]), num(mm["2026-10"]["reservas"]), 0.5) and cerca(num(M["2026-10"]["riesgo_pais"]), num(mm["2026-10"]["riesgo_pais"]), 0.01), f"reservas {M['2026-10']['reservas']}, riesgo {M['2026-10']['riesgo_pais']}")
+x = M["2026-10"]
+control("brecha y distancia a la banda cierran", cerca(num(x["brecha_blue"]), (num(x["dolar_blue"]) / num(x["tc_a3500"]) - 1) * 100, 0.01) and cerca(num(x["dist_techo"]), (num(x["banda_sup"]) / num(x["tc_a3500"]) - 1) * 100, 0.01))
+control("plazo fijo renovado encadena", cerca(num(x["pf_index"]), num(M["2026-09"]["pf_index"]) * (1 + num(M["2026-09"]["tem_pf"]) / 100), 0.05))
+dia = tabla(nuevo, "diario")
+control("datos diarios completos y con fecha", len(dia) == 10 and all(re.fullmatch(r"\d{4}-\d{2}-\d{2}", z["fecha"]) and num(z["valor"]) for z in dia), f"hasta {max(z['fecha'] for z in dia)}")
 
 # 8. Página.
 html = (RAIZ / "index.html").read_text(encoding="utf-8")

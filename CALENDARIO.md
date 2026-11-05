@@ -4,12 +4,15 @@ Generado el 05/11/2026 con `pipeline/actualizar.py`. Las reglas están en `pipel
 
 | Dato | Origen | Frecuencia | Último dato | Próxima revisión | Actualización |
 |---|---|---|---|---|---|
-| Curva de tasas en pesos | ArgentinaDatos | diaria | 05/11/2026 | 06/11/2026 | Automática |
+| Curva de tasas en pesos | ArgentinaDatos | diaria, a las 18:00 | 05/11/2026 | 06/11/2026 | Automática |
+| Último dato diario: dólares, riesgo país, reservas y tasas | BCRA y ArgentinaDatos | diaria, a las 18:00 | 05/11/2026 | 06/11/2026 | Automática |
+| Inflación y expectativas | INDEC y REM vía BCRA | mensual | sep 2026 | 16/11/2026 | Automática |
 | Contexto global: granos, Brent, EE. UU. y Brasil | FRED y Banco Central de Brasil | mensual | ago 2026 | 20/11/2026 | Automática |
 | Fiscal: ingresos, gastos e intereses | Hacienda vía datos.gob.ar | mensual | ago 2026 | 25/11/2026 | Automática |
 | Empleo registrado y turismo | Secretaría de Trabajo y BCRA vía datos.gob.ar | mensual | jun 2026 | 25/11/2026 | Automática |
 | Capacidad instalada, construcción y servicios públicos | INDEC vía datos.gob.ar | mensual | jul 2026 | 25/11/2026 | Automática |
 | Deuda: stock, moneda, acreedor y pagos | Secretaría de Finanzas | mensual | sep 2026 | 28/11/2026 | Automática |
+| Dólar, tasas y riesgo país: cierre mensual | BCRA y ArgentinaDatos | diaria en origen, cierre mensual en el tablero | oct 2026 | 03/12/2026 | Automática |
 | BCRA: reservas, compras, dólares en bancos, pases | API del BCRA | diaria en origen, cierre mensual en el tablero | oct 2026 | 03/12/2026 | Automática |
 | Crédito al sector privado | API del BCRA | diaria en origen, cierre mensual en el tablero | oct 2026 | 03/12/2026 | Automática |
 | Tipo de cambio real multilateral | BCRA | diaria en origen, promedio mensual en el tablero | oct 2026 | 03/12/2026 | Automática |
@@ -19,10 +22,8 @@ Generado el 05/11/2026 con `pipeline/actualizar.py`. Las reglas están en `pipel
 | Actividad (EMAE) | INDEC | mensual | jul 2026 | 25/10/2026 | Pendiente: sin descarga automática |
 | Salarios | INDEC | mensual | jul 2026 | 25/10/2026 | Pendiente: sin descarga automática |
 | Industria y construcción por sector (IPI) | INDEC | mensual | ago 2026 | 10/11/2026 | Pendiente: sin descarga automática |
-| Inflación (IPC) | INDEC | mensual | sep 2026 | 15/11/2026 | Pendiente: sin descarga automática |
 | Comercio exterior | INDEC | mensual | sep 2026 | 20/11/2026 | Pendiente: sin descarga automática |
 | Consumo por rubros | INDEC | mensual | ago 2026 | 25/11/2026 | Pendiente: sin descarga automática |
-| Dólar oficial, paralelos, tasas y riesgo país | BCRA y ArgentinaDatos | diaria en origen | oct 2026 | 03/12/2026 | Pendiente: sin descarga automática |
 | Recaudación | ARCA | mensual | oct 2026 | 03/12/2026 | Pendiente: sin descarga automática |
 | Empleo y desempleo (EPH) | INDEC | trimestral | 2.º trim. 2026 | 24/12/2026 | Pendiente: sin descarga automática |
 | Inversión e IED | INDEC y BCRA | trimestral | 2.º trim. 2026 | 24/12/2026 | Pendiente: sin descarga automática |

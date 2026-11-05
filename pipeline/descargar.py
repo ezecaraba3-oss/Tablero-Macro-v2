@@ -296,6 +296,60 @@ def cerrados(serie):
     return {m: v for m, v in serie.items() if m < actual}
 
 
+DESDE_MERCADO = "2026-10-01"  # los meses anteriores salen de la base de la v1
+
+
+def ad_dolar(casa):
+    return [(x["fecha"], x["venta"]) for x in json.loads(bajar(f"https://api.argentinadatos.com/v1/cotizaciones/dolares/{casa}", 180))]
+
+
+def ad_riesgo():
+    return [(x["fecha"], x["valor"]) for x in json.loads(bajar("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais", 180))]
+
+
+def d_mercado():
+    """Cierre mensual, con el mismo método de la v1: promedio del mes; reservas y bandas, último dato."""
+    def promedio(filas):
+        g = {}
+        for f, v in filas:
+            if f >= DESDE_MERCADO:
+                g.setdefault(f[:7], []).append(v)
+        return cerrados({m: sum(x) / len(x) for m, x in g.items()})
+
+    def ultimo(filas):
+        g = {}
+        for f, v in sorted(filas):
+            if f >= DESDE_MERCADO:
+                g[f[:7]] = v
+        return cerrados(g)
+
+    s = {"tc_a3500": promedio(bcra(5, DESDE_MERCADO)), "reservas": ultimo(bcra(1, DESDE_MERCADO)), "badlar": promedio(bcra(7, DESDE_MERCADO)),
+         "tasa_pf30": promedio(bcra(12, DESDE_MERCADO)), "tasa_personales": promedio(bcra(14, DESDE_MERCADO)),
+         "banda_inf": ultimo(bcra(1187, DESDE_MERCADO)), "banda_sup": ultimo(bcra(1188, DESDE_MERCADO)),
+         "dolar_blue": promedio(ad_dolar("blue")), "dolar_ccl": promedio(ad_dolar("contadoconliqui")), "dolar_mep": promedio(ad_dolar("bolsa")), "riesgo_pais": promedio(ad_riesgo())}
+    guardar("mercado_mensual.csv", ["mes", *s], a_filas(s, "mes"))
+
+
+def d_precios():
+    s = {"infl_mensual": 27, "infl_ia": 28, "rem_12m": 29}
+    out = {c: {f[:7]: v for f, v in bcra(i, "2026-09-01")} for c, i in s.items()}
+    guardar("precios_mensual.csv", ["mes", *out], a_filas(out, "mes"))
+
+
+def d_diario():
+    """Último valor disponible de cada dato diario, con su fecha y el valor anterior."""
+    desde = (dt.date.today() - dt.timedelta(days=25)).isoformat()
+    fuentes = [("Dólar oficial mayorista", "$", bcra(5, desde)), ("Dólar blue", "$", ad_dolar("blue")), ("Dólar contado con liqui", "$", ad_dolar("contadoconliqui")),
+               ("Dólar MEP", "$", ad_dolar("bolsa")), ("Riesgo país", "pb", ad_riesgo()), ("Reservas brutas", "M US$", bcra(1, desde)),
+               ("Tasa BADLAR", "%", bcra(7, desde)), ("Tasa de plazo fijo a 30 días", "%", bcra(12, desde)), ("Techo de la banda cambiaria", "$", bcra(1188, desde)), ("Piso de la banda cambiaria", "$", bcra(1187, desde))]
+    filas = []
+    for nombre, unidad, serie in fuentes:
+        serie = sorted(serie)
+        f, v = serie[-1]
+        filas.append({"indicador": nombre, "unidad": unidad, "fecha": f, "valor": v, "previo": serie[-2][1], "fecha_previa": serie[-2][0]})
+    guardar("diario.csv", ["indicador", "unidad", "fecha", "valor", "previo", "fecha_previa"], filas)
+
+
 def d_fiscal():
     d = api(SERIES_FISCAL)
     guardar("fiscal_mensual.csv", ["mes", *d], a_filas(d, "mes"))
@@ -380,7 +434,7 @@ def d_itcrm():
     construir.bajar_itcrm()
 
 
-FUENTES_POR_ID = {"curva": d_curva, "bcra": d_bcra, "credito": d_credito, "itcrm": d_itcrm, "global": d_global, "deuda_mensual": d_deuda_mensual, "fiscal": d_fiscal,
+FUENTES_POR_ID = {"diario": d_diario, "mercado": d_mercado, "precios": d_precios, "curva": d_curva, "bcra": d_bcra, "credito": d_credito, "itcrm": d_itcrm, "global": d_global, "deuda_mensual": d_deuda_mensual, "fiscal": d_fiscal,
                   "series_mensuales": d_series_mensuales, "actividad": d_actividad, "series_trimestrales": d_series_trimestrales, "demanda": d_demanda, "deuda_trim": d_deuda_trim}
 
 

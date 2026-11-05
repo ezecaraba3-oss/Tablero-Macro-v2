@@ -66,6 +66,14 @@ Decisiones de método:
 - **Brasil:** el real y la Selic se recortan desde 1995, porque antes hubo otras monedas e hiperinflación.
 - **Sin incorporar:** precio y cantidad de importaciones (series vacías en la API), morosidad (sin serie vigente localizada), historia de la curva en pesos.
 
+## Calendario de actualización
+
+- **Horario:** una corrida diaria a las 18:00 de Argentina. Los datos diarios se actualizan en ella los días hábiles; los mensuales y trimestrales, solo el día en que les toca.
+- **Conectados al calendario:** dólar, tasas, riesgo país, reservas e inflación. Antes dependían de la base de la v1.
+- **Octubre de 2026 corregido:** la v1 lo había bajado antes del cierre. Reservas pasa de 50.208 a 48.565 M US$; riesgo país, de 644 a 661 pb; dólar oficial, de 1.523 a 1.525 $.
+- **Método validado:** promedios y últimos datos reproducen los valores de septiembre de 2026 de la v1.
+- **Todavía sin conectar:** los grupos marcados como pendientes en `CALENDARIO.md`. Tampoco M2, préstamos reales ni la tabla de «quién le ganó a la inflación» (`carrera`).
+
 ## Revisado y sin cambios
 
 - **Energía eléctrica (`xd46`), sep 2021.** El valor de 257,82 M coincide con la fuente oficial, aunque los subrubros superen al total de combustibles y energía.
