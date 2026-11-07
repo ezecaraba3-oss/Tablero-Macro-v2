@@ -1,11 +1,11 @@
 # Calendario de actualización
 
-Generado el 05/11/2026 con `pipeline/actualizar.py`. Las reglas están en `pipeline/calendario.json`.
+Generado el 06/11/2026 con `pipeline/actualizar.py`. Las reglas están en `pipeline/calendario.json`.
 
 | Dato | Origen | Frecuencia | Último dato | Próxima revisión | Actualización |
 |---|---|---|---|---|---|
-| Curva de tasas en pesos | ArgentinaDatos | diaria, a las 18:00 | 05/11/2026 | 06/11/2026 | Automática |
-| Último dato diario: dólares, riesgo país, reservas y tasas | BCRA y ArgentinaDatos | diaria, a las 18:00 | 05/11/2026 | 06/11/2026 | Automática |
+| Curva de tasas en pesos | ArgentinaDatos | diaria, a las 18:00 | 06/11/2026 | 09/11/2026 | Automática |
+| Último dato diario: dólares, riesgo país, reservas y tasas | BCRA y ArgentinaDatos | diaria, a las 18:00 | 06/11/2026 | 09/11/2026 | Automática |
 | Inflación y expectativas | INDEC y REM vía BCRA | mensual | sep 2026 | 16/11/2026 | Automática |
 | Contexto global: granos, Brent, EE. UU. y Brasil | FRED y Banco Central de Brasil | mensual | ago 2026 | 20/11/2026 | Automática |
 | Fiscal: ingresos, gastos e intereses | Hacienda vía datos.gob.ar | mensual | ago 2026 | 25/11/2026 | Automática |
