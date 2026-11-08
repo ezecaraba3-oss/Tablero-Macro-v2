@@ -7,6 +7,7 @@ Generado el 08/11/2026 con `pipeline/actualizar.py`. Las reglas están en `pipel
 | Curva de tasas en pesos | ArgentinaDatos | diaria, a las 18:00 | 06/11/2026 | 09/11/2026 | Automática |
 | Último dato diario: dólares, riesgo país, reservas y tasas | BCRA y ArgentinaDatos | diaria, a las 18:00 | 06/11/2026 | 09/11/2026 | Automática |
 | Inflación y expectativas | INDEC y REM vía BCRA | mensual | sep 2026 | 16/11/2026 | Automática |
+| Canasta básica, salario mínimo y jubilación mínima | INDEC y datos.gob.ar | mensual | sep 2026 | 16/11/2026 | Automática |
 | Contexto global: granos, Brent, EE. UU. y Brasil | FRED y Banco Central de Brasil | mensual | ago 2026 | 20/11/2026 | Automática |
 | Comercio exterior: totales, rubros y socios | INDEC | mensual | sep 2026 | 20/11/2026 | Automática |
 | Fiscal: ingresos, gastos e intereses | Hacienda vía datos.gob.ar | mensual | ago 2026 | 25/11/2026 | Automática |
@@ -15,12 +16,14 @@ Generado el 08/11/2026 con `pipeline/actualizar.py`. Las reglas están en `pipel
 | Actividad (EMAE), total y por rama | INDEC | mensual | ago 2026 | 25/11/2026 | Automática |
 | Salarios | INDEC | mensual | ago 2026 | 25/11/2026 | Automática |
 | Consumo por rubros: supermercados, mayoristas y shoppings | INDEC | mensual | ago 2026 | 25/11/2026 | Automática |
+| Préstamos en pesos al sector privado (reales) | BCRA vía datos.gob.ar | mensual | ago 2026 | 25/11/2026 | Automática |
 | Deuda: stock, moneda, acreedor y pagos | Secretaría de Finanzas | mensual | sep 2026 | 28/11/2026 | Automática |
 | Dólar, tasas y riesgo país: cierre mensual | BCRA y ArgentinaDatos | diaria en origen, cierre mensual en el tablero | oct 2026 | 03/12/2026 | Automática |
 | BCRA: reservas, compras, dólares en bancos, pases | API del BCRA | diaria en origen, cierre mensual en el tablero | oct 2026 | 03/12/2026 | Automática |
 | Crédito al sector privado | API del BCRA | diaria en origen, cierre mensual en el tablero | oct 2026 | 03/12/2026 | Automática |
 | Tipo de cambio real multilateral | BCRA | diaria en origen, promedio mensual en el tablero | oct 2026 | 03/12/2026 | Automática |
 | Recaudación y derechos de comercio | ARCA | mensual | oct 2026 | 03/12/2026 | Automática |
+| M2 privado (variación interanual) | API del BCRA | diaria en origen, último dato del mes en el tablero | oct 2026 | 03/12/2026 | Automática |
 | Industria por sector (IPI manufacturero) | INDEC | mensual | sep 2026 | 10/12/2026 | Automática |
 | Empleo y desempleo (EPH) | INDEC vía datos.gob.ar | trimestral | 2.º trim. 2026 | 24/12/2026 | Automática |
 | Inversión por tipo e IED | INDEC y balance de pagos vía datos.gob.ar | trimestral | 2.º trim. 2026 | 24/12/2026 | Automática |

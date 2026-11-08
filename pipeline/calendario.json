@@ -57,7 +57,7 @@
     "rezago": 1
    },
    "salidas": {
-    "mensual": "^(infl_|rem_12m|ipc_index|tc_real_index|tc_pesos_hoy|tasa_real|recaudacion_real_ia$|sal_(priv_|pub_)?real$)",
+    "mensual": "^(infl_|rem_12m|ipc_index|tc_real_index|tc_pesos_hoy|tasa_real|recaudacion_real_ia$|sal_(priv_|pub_)?real$|smvm_real$|jub_real$|prestamos_real_ia$)",
     "consumo_rubros": "^ipc$"
    }
   },
@@ -363,6 +363,52 @@
    },
    "salidas": {
     "inv_trim": ".*"
+   }
+  },
+  {
+   "id": "m2",
+   "nombre": "M2 privado (variación interanual)",
+   "origen": "API del BCRA",
+   "frecuencia": "diaria en origen, último dato del mes en el tablero",
+   "archivo": "m2_mensual.csv",
+   "regla": {
+    "tipo": "mensual",
+    "dia": 3,
+    "rezago": 1
+   },
+   "salidas": {
+    "mensual": "^m2_priv_ia$"
+   }
+  },
+  {
+   "id": "prestamos_pesos",
+   "nombre": "Préstamos en pesos al sector privado (reales)",
+   "origen": "BCRA vía datos.gob.ar",
+   "frecuencia": "mensual",
+   "archivo": "prestamos_pesos.csv",
+   "regla": {
+    "tipo": "mensual",
+    "dia": 25,
+    "rezago": 2
+   },
+   "salidas": {
+    "mensual": "^prestamos_real_ia$"
+   }
+  },
+  {
+   "id": "haberes",
+   "nombre": "Canasta básica, salario mínimo y jubilación mínima",
+   "origen": "INDEC y datos.gob.ar",
+   "frecuencia": "mensual",
+   "archivo": "haberes_mensual.csv",
+   "columna_clave": "cbt",
+   "regla": {
+    "tipo": "mensual",
+    "dia": 16,
+    "rezago": 1
+   },
+   "salidas": {
+    "mensual": "^(smvm_|jub_|cbt_ia)"
    }
   }
  ],

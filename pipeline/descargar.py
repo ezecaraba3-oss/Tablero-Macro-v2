@@ -858,9 +858,36 @@ def d_inversion():
     guardar("inversion_trimestral.csv", cols, [{c: datos[t].get(c, "") for c in cols} for t in sorted(datos)])
 
 
+# Dinero y crédito: M2 privado (BCRA, último dato del mes) y préstamos en pesos al sector privado (datos.gob.ar).
+def d_m2():
+    ult = {}
+    for f, v in bcra(25, "2024-01-01"):
+        ult[f[:7]] = v
+    guardar("m2_mensual.csv", ["mes", "m2_priv_ia"], a_filas({"m2_priv_ia": cerrados(ult)}, "mes"))
+
+
+def d_prestamos_pesos():
+    d = api({"prest_pesos": "91.1_DETALLE_PRPOT_0_0_25"})
+    guardar("prestamos_pesos.csv", ["mes", "prest_pesos"], a_filas(d, "mes"))
+
+
+# Canastas (INDEC, por adulto equivalente), salario mínimo y haber mínimo jubilatorio (datos.gob.ar).
+def d_haberes():
+    d = {k: cerrados(v) for k, v in api({"smvm": "57.1_SMVMM_0_M_34", "jub": "58.1_MP_0_M_24"}).items()}  # el SMVM trae aumentos ya fijados
+    h = xls(bajar(f"{INDEC}/sociedad/serie_cba_cbt.xls")).sheet_by_index(0)
+    if "indigencia" not in str(h.cell_value(4, 1)).lower() or "pobreza" not in str(h.cell_value(4, 3)).lower():
+        sys.exit("Canastas: cambió el formato de serie_cba_cbt.xls")
+    d["cba"], d["cbt"] = {}, {}
+    for r in range(h.nrows):
+        mes = mes_serial(h.cell_value(r, 0))
+        if mes and isinstance(h.cell_value(r, 3), float):
+            d["cba"][mes], d["cbt"][mes] = h.cell_value(r, 1), h.cell_value(r, 3)
+    guardar("haberes_mensual.csv", ["mes", "smvm", "jub", "cba", "cbt"], a_filas(d, "mes"))
+
+
 FUENTES_POR_ID = {"diario": d_diario, "mercado": d_mercado, "precios": d_precios, "curva": d_curva, "bcra": d_bcra, "credito": d_credito, "itcrm": d_itcrm, "global": d_global, "deuda_mensual": d_deuda_mensual, "fiscal": d_fiscal,
                   "series_mensuales": d_series_mensuales, "actividad": d_actividad, "series_trimestrales": d_series_trimestrales, "demanda": d_demanda, "deuda_trim": d_deuda_trim,
-                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio, "consumo": d_consumo, "recaudacion": d_recaudacion, "eph": d_eph, "inversion": d_inversion}
+                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio, "consumo": d_consumo, "recaudacion": d_recaudacion, "eph": d_eph, "inversion": d_inversion, "m2": d_m2, "prestamos_pesos": d_prestamos_pesos, "haberes": d_haberes}
 
 
 def main():

@@ -60,7 +60,7 @@ PERMITIDO = {
     | {("2026-09", c) for c in ["expo", "impo", "saldo_neto", "expo_12m", "impo_12m", "saldo_12m", "saldo_neto_12m", "cobertura_12m", "expo_ia_12m", "impo_ia_12m"]}
     | {(m, c) for m in ("2017-01", "2017-02") for c in ("infl_mensual", "tasa_real_pf_m")}
     # Octubre de 2026 estaba incompleto en la v1: se reemplaza por el cierre del mes.
-    | {("2026-10", c) for c in ("tc_a3500", "reservas", "badlar", "tasa_pf30", "tasa_personales", "banda_inf", "banda_sup", "dolar_blue", "dolar_ccl", "riesgo_pais", "tc_m", "tc_ia", "brecha_ccl", "brecha_mep", "brecha_blue", "tem_pf", "dist_techo", "dist_piso")},
+    | {("2026-10", c) for c in ("m2_priv_ia", "tc_a3500", "reservas", "badlar", "tasa_pf30", "tasa_personales", "banda_inf", "banda_sup", "dolar_blue", "dolar_ccl", "riesgo_pais", "tc_m", "tc_ia", "brecha_ccl", "brecha_mep", "brecha_blue", "tem_pf", "dist_techo", "dist_piso")},
     "comercio_rubros": {("2026-06", "x00"), ("2026-08", "x00"), ("2026-08", "x01")},
     "inv_mensual": {(m, c) for m in ("2026-08", "2026-09") for c in ("impo", "ar_efec", "ar_efec_12m")},
     "comercio_anual": {("2026", c) for c in ("expo", "impo", "saldo", "cobertura", "meses", "periodo")},
@@ -73,6 +73,8 @@ inesperados = []
 total = 0
 for n in base:
     b, a = tabla(base, n), tabla(nuevo, n)
+    if n == "carrera":
+        continue  # tabla derivada: se rearma entera con el último dato (ver controles de carrera)
     if n == "sectores_meta":
         b = [r for r in b if r["clave"] != "s68"]
     clave_t = list(b[0])[0]
@@ -197,7 +199,7 @@ dif = {m: abs(num(fm[m]["fis_superavit_pib"]) - v) for m, v in prim_v1.items()}
 peor = max(dif, key=dif.get)
 control("superávit primario = resultado primario de la v1", dif[peor] <= 0.02, f"dif máx {dif[peor]:.3f} pp en {peor}; jun 2026: {fm['2026-06']['fis_superavit_pib']} vs {prim_v1['2026-06']}")
 cal_d = tabla(nuevo, "calendario_datos")
-control("calendario completo", len(cal_d) == 25 and sum(x["estado"] == "Automática" for x in cal_d) == 23, str(len(cal_d)))
+control("calendario completo", len(cal_d) == 28 and sum(x["estado"] == "Automática" for x in cal_d) == 26, str(len(cal_d)))
 control("resultado financiero 2025 plausible", -1 < num(M["2025-12"]["fis_financiero_pib"]) < 1, M["2025-12"]["fis_financiero_pib"])
 control("ingresos / PIB plausibles", all(10 < num(x["fis_ingresos_pib"]) < 30 for x in fm.values()), M["2025-12"]["fis_ingresos_pib"])
 
@@ -351,6 +353,22 @@ control("inversión: las fórmulas de las derivadas reproducen la v1", not mal, 
 nuevos = [t for t in Ivn if t not in Ivb]
 mal = [t for t in nuevos if not cerca(num(Ivn[t]["r_tot"]), num(inv_f[t]["r_tot"]), 0.01)]
 control("inversión: trimestres nuevos iguales a INDEC", not mal, f"nuevos={nuevos}")
+
+# Dinero, haberes y carrera.
+car = tabla(nuevo, "carrera")
+mal = [x["activo"] for x in car if not cerca((1 + num(x["variacion_nominal"]) / 100) / (1 + num(x["inflacion"]) / 100) * 100 - 100, num(x["variacion_real"]), 0.011)]
+control("carrera: la variación real sale de la nominal y la inflación", len(car) == 20 and not mal, str(mal))
+control("carrera: ordenada de mayor a menor en cada tramo", all([num(x["variacion_real"]) for x in car if x["tramo"] == t] == sorted([num(x["variacion_real"]) for x in car if x["tramo"] == t], reverse=True) for t in ("12m", "milei")))
+hab = {x["mes"]: x for x in fuente("haberes_mensual.csv")}
+mal = [m for m in hab if num(Mb.get(m, {}).get("smvm_cbt")) is not None and num(hab[m]["cbt"]) and not cerca(num(hab[m]["smvm"]) / num(hab[m]["cbt"]), num(Mb[m]["smvm_cbt"]), 0.0005)]
+control("haberes: salario mínimo y canasta reproducen la v1", not mal, str(mal[:4]))
+pp_f = {x["mes"]: num(x["prest_pesos"]) for x in fuente("prestamos_pesos.csv")}
+dif = [abs((pp_f[m] / pp_f[mover(m, -12)] / (num(Mb[m]["ipc_index"]) / num(Mb[mover(m, -12)]["ipc_index"])) - 1) * 100 - num(Mb[m]["prestamos_real_ia"]))
+       for m in pp_f if mover(m, -12) in pp_f and num(Mb.get(m, {}).get("prestamos_real_ia")) is not None and m >= "2018-01"]
+control("préstamos reales: la serie reproduce la v1 desde 2018", dif and max(dif) < 0.01, f"{len(dif)} meses; dif máx {max(dif):.4f}")
+m2_f = {x["mes"]: num(x["m2_priv_ia"]) for x in fuente("m2_mensual.csv")}
+mal = [m for m in m2_f if "2024-01" <= m < "2026-09" and num(Mb.get(m, {}).get("m2_priv_ia")) is not None and not cerca(m2_f[m], num(Mb[m]["m2_priv_ia"]), 0.15)]
+control("M2: el último dato del mes reproduce la v1", not mal, str(mal[:4]))
 
 # 8. Página.
 html = (RAIZ / "index.html").read_text(encoding="utf-8")

@@ -28,7 +28,7 @@ import calendario as cal  # noqa: E402
 RAIZ = DIR.parent
 DATOS = RAIZ / "assets" / "datos.js"
 INDEX = RAIZ / "index.html"
-TABLAS_DERIVADAS = {"ultimos", "sostenibilidad", "calendario_datos"}
+TABLAS_DERIVADAS = {"ultimos", "sostenibilidad", "calendario_datos", "carrera"}
 ORIGENES = {
     "datosgob": "https://apis.datos.gob.ar/series/api/search/?q=ipc&limit=1",
     "bcra": "https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/1?limit=1",

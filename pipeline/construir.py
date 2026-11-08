@@ -278,7 +278,7 @@ def pib_nominal(inv):
 def extender_filas(obj):
     """Suma filas para los períodos nuevos. Las series que no tienen ese dato quedan vacías."""
     meses = set()
-    for archivo in ("deuda_mensual.csv", "bcra_mensual.csv", "series_mensuales.csv", "fiscal_mensual.csv", "actividad_mensual.csv", "global_mensual.csv", "credito_mensual.csv", "itcrm_mensual.csv", "mercado_mensual.csv", "precios_mensual.csv", "emae_mensual.csv", "salarios_mensual.csv", "ipi_mensual.csv", "comercio_mensual.csv", "recaudacion_mensual.csv"):
+    for archivo in ("deuda_mensual.csv", "bcra_mensual.csv", "series_mensuales.csv", "fiscal_mensual.csv", "actividad_mensual.csv", "global_mensual.csv", "credito_mensual.csv", "itcrm_mensual.csv", "mercado_mensual.csv", "precios_mensual.csv", "emae_mensual.csv", "salarios_mensual.csv", "ipi_mensual.csv", "comercio_mensual.csv", "recaudacion_mensual.csv", "m2_mensual.csv"):
         meses |= {r["mes"] for r in leer_fuente(archivo)[1]}
     cols, filas = leer_tabla(obj["mensual"])
     ultimo = filas[-1]["mes"]
@@ -675,6 +675,98 @@ def aplicar_inversion(obj):
             if t > desde[c] and (t in nuevos or c == "ied_flujo_4t"):
                 I[t][c] = fmt(v, 3)
     obj["inv_trim"] = escribir_tabla(cols, filas)
+
+
+def aplicar_dinero_y_haberes(obj):
+    """M2, préstamos reales, salario mínimo, jubilación mínima y canasta: meses posteriores a la v1, con su método."""
+    cols, filas = leer_tabla(obj["mensual"])
+    M = {r["mes"]: r for r in filas}
+    cols_n = ("m2_priv_ia", "prestamos_real_ia", "smvm_real", "jub_real", "smvm_cbt", "jub_cbt", "cbt_ia")
+    desde = {c: ultimo_con(M, c) for c in cols_n}
+    m2 = {f["mes"]: num(f["m2_priv_ia"]) for f in leer_fuente("m2_mensual.csv")[1]}
+    pp = {f["mes"]: num(f["prest_pesos"]) for f in leer_fuente("prestamos_pesos.csv")[1]}
+    H = {f["mes"]: f for f in leer_fuente("haberes_mensual.csv")[1]}
+    ser = {c: {m: num(f[c]) for m, f in H.items() if num(f[c]) is not None} for c in ("smvm", "jub", "cbt")}
+    ipc = {m: num(r["ipc_index"]) for m, r in M.items() if num(r["ipc_index"])}
+    # Factores de la v1 para pasar a pesos constantes (constantes desde 2017, verificados).
+    k = {}
+    for c, nom in (("smvm_real", "smvm"), ("jub_real", "jub")):
+        ref = max(m for m in M if num(M[m][c]) is not None and m in ser[nom] and m in ipc)
+        k[c] = num(M[ref][c]) / (ser[nom][ref] / ipc[ref])
+    for mes, r in M.items():
+        a = mover_mes(mes, -12)
+        # M2 de octubre de 2026: la v1 lo bajó antes del cierre del mes (como el dólar y las reservas).
+        if (mes > desde["m2_priv_ia"] or mes == "2026-10") and m2.get(mes) is not None:
+            r["m2_priv_ia"] = fmt(m2[mes], 1)
+        if mes > desde["prestamos_real_ia"] and pp.get(mes) and pp.get(a) and mes in ipc and a in ipc:
+            r["prestamos_real_ia"] = fmt((pp[mes] / pp[a] / (ipc[mes] / ipc[a]) - 1) * 100, 6)
+        for c, nom in (("smvm_real", "smvm"), ("jub_real", "jub")):
+            if mes > desde[c] and mes in ser[nom] and mes in ipc:
+                r[c] = fmt(ser[nom][mes] / ipc[mes] * k[c], 4)
+        for c, nom in (("smvm_cbt", "smvm"), ("jub_cbt", "jub")):
+            if mes > desde[c] and mes in ser[nom] and mes in ser["cbt"]:
+                r[c] = fmt(ser[nom][mes] / ser["cbt"][mes], 6)
+        if mes > desde["cbt_ia"] and mes in ser["cbt"] and a in ser["cbt"]:
+            r["cbt_ia"] = fmt((ser["cbt"][mes] / ser["cbt"][a] - 1) * 100, 4)
+    obj["mensual"] = escribir_tabla(cols, filas)
+
+
+# Tabla «¿Quién le ganó a la inflación?»: se rearma con el último dato de cada serie.
+ACTIVOS_CARRERA = [
+    ("Canasta básica total", "cbt", "Por adulto equivalente"),
+    ("Salario total (índice INDEC)", "sal_total", "Incluye público y no registrado"),
+    ("Jubilación mínima", "jub", "Haber mínimo, sin bono"),
+    ("Plazo fijo a 30 días renovado", "pf_index", "Tasa promedio de depósitos a 30 días"),
+    ("Salario público", "sal_pub", "Índice de salarios INDEC"),
+    ("Salario registrado privado", "sal_priv", "Índice de salarios INDEC"),
+    ("Salario mínimo, vital y móvil", "smvm", "Valor mensual vigente"),
+    ("Dólar contado con liqui", "dolar_ccl", "Promedio mensual"),
+    ("Dólar blue", "dolar_blue", "Promedio mensual"),
+    ("Dólar oficial (A3500)", "tc_a3500", "Promedio mensual"),
+]
+INICIO_MILEI = "2023-11"
+
+
+def series_carrera(obj):
+    """Valores nominales mensuales de cada activo de la carrera: {clave: {AAAA-MM: valor}}."""
+    _, mf = leer_tabla(obj["mensual"])
+    M = {r["mes"]: r for r in mf}
+    s = {c: {m: num(r[c]) for m, r in M.items() if num(r.get(c)) is not None} for c in ("pf_index", "dolar_ccl", "dolar_blue", "tc_a3500", "ipc_index")}
+    sal = {f["mes"]: f for f in leer_fuente("salarios_mensual.csv")[1]}
+    for c, col in (("sal_total", "is_total"), ("sal_pub", "is_publico"), ("sal_priv", "is_priv_reg")):
+        s[c] = {m: num(f[col]) for m, f in sal.items() if num(f[col]) is not None}
+    hab = {f["mes"]: f for f in leer_fuente("haberes_mensual.csv")[1]}
+    for c in ("smvm", "jub", "cbt"):
+        s[c] = {m: num(f[c]) for m, f in hab.items() if num(f.get(c)) is not None}
+    return s
+
+
+def filas_carrera(s):
+    ipc = s["ipc_index"]
+    filas = []
+    for tramo in ("12m", "milei"):
+        bloque = []
+        for nombre, clave, nota in ACTIVOS_CARRERA:
+            serie = s[clave]
+            fin = max(m for m in serie if m in ipc)
+            ini = mover_mes(fin, -12) if tramo == "12m" else INICIO_MILEI
+            if ini not in serie or ini not in ipc:
+                continue
+            nominal = (serie[fin] / serie[ini] - 1) * 100
+            inflacion = (ipc[fin] / ipc[ini] - 1) * 100
+            real = ((1 + nominal / 100) / (1 + inflacion / 100) - 1) * 100
+            indice = clave.startswith("sal_")
+            v0, v1 = (100.0, serie[fin] / serie[ini] * 100) if clave == "pf_index" else (serie[ini], serie[fin])
+            bloque.append({"tramo": tramo, "activo": nombre, "periodo": f"{MESES[int(ini[5:]) - 1]} {ini[:4]} a {MESES[int(fin[5:]) - 1]} {fin[:4]}",
+                           "valor_inicio": "" if indice else fmt(v0, 2), "valor_fin": "" if indice else fmt(v1, 2), "variacion_nominal": fmt(nominal, 2),
+                           "inflacion": fmt(inflacion, 2), "variacion_real": fmt(real, 2), "nota": nota, "_real": real})
+        filas += sorted(bloque, key=lambda x: -x["_real"])
+    return [{k: v for k, v in f.items() if k != "_real"} for f in filas]
+
+
+def actualizar_carrera(obj):
+    cols, _ = leer_tabla(obj["carrera"])
+    obj["carrera"] = escribir_tabla(cols, filas_carrera(series_carrera(obj)))
 
 
 def actualizar_kpi_indec(obj):
@@ -1167,6 +1259,7 @@ def main():
     aplicar_recaudacion(obj)
     aplicar_eph(obj)
     aplicar_inversion(obj)
+    aplicar_dinero_y_haberes(obj)
     M = actualizar_mensual(obj)
     actualizar_inv_mensual(obj, M)
     actualizar_comercio_anual(obj, M)
@@ -1181,6 +1274,7 @@ def main():
     actualizar_kpi_indec(obj)
     actualizar_kpi_recaudacion(obj)
     actualizar_kpi_eph(obj)
+    actualizar_carrera(obj)
     obj["diario"] = escribir_tabla(*leer_fuente("diario.csv"))
     tabla_calendario(obj)
     SALIDA.write_text(ini + json.dumps(obj, ensure_ascii=False) + fin, encoding="utf-8", newline="\n")
