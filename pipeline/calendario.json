@@ -226,6 +226,40 @@
     "deuda_perfil": ".*",
     "deuda_resumen": ".*"
    }
+  },
+  {
+   "id": "emae",
+   "nombre": "Actividad (EMAE)",
+   "origen": "INDEC",
+   "frecuencia": "mensual",
+   "archivo": "emae_mensual.csv",
+   "columna_clave": "emae_desest",
+   "regla": {
+    "tipo": "mensual",
+    "dia": 25,
+    "rezago": 2
+   },
+   "salidas": {
+    "mensual": "^emae_",
+    "trimestral": "^emae_ia$"
+   }
+  },
+  {
+   "id": "salarios",
+   "nombre": "Salarios",
+   "origen": "INDEC",
+   "frecuencia": "mensual",
+   "archivo": "salarios_mensual.csv",
+   "columna_clave": "is_total",
+   "regla": {
+    "tipo": "mensual",
+    "dia": 25,
+    "rezago": 2
+   },
+   "salidas": {
+    "mensual": "^sal_",
+    "trimestral": "^sal_real$"
+   }
   }
  ],
  "pendientes": [
@@ -262,30 +296,6 @@
    "regla": {
     "tipo": "mensual",
     "dia": 10,
-    "rezago": 2
-   }
-  },
-  {
-   "nombre": "Actividad (EMAE)",
-   "origen": "INDEC",
-   "frecuencia": "mensual",
-   "tabla": "mensual",
-   "columna": "emae_desest",
-   "regla": {
-    "tipo": "mensual",
-    "dia": 25,
-    "rezago": 2
-   }
-  },
-  {
-   "nombre": "Salarios",
-   "origen": "INDEC",
-   "frecuencia": "mensual",
-   "tabla": "mensual",
-   "columna": "sal_real",
-   "regla": {
-    "tipo": "mensual",
-    "dia": 25,
     "rezago": 2
    }
   },

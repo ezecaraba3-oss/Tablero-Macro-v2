@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Instalar lector de planillas .xls (INDEC)
+        run: pip install xlrd==2.0.1
       - name: Probar datos.gob.ar
         if: github.event_name != 'schedule'
         continue-on-error: true
@@ -48,6 +50,10 @@ jobs:
         if: github.event_name != 'schedule'
         continue-on-error: true
         run: python pipeline/actualizar.py --probar argentinadatos
+      - name: Probar INDEC
+        if: github.event_name != 'schedule'
+        continue-on-error: true
+        run: python pipeline/actualizar.py --probar indec
       - name: Actualizar lo que toca
         run: python pipeline/actualizar.py
       - name: Publicar solo si hubo cambios

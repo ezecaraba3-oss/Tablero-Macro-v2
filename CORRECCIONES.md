@@ -72,6 +72,8 @@ Decisiones de método:
 - **Conectados al calendario:** dólar, tasas, riesgo país, reservas e inflación. Antes dependían de la base de la v1.
 - **Octubre de 2026 corregido:** la v1 lo había bajado antes del cierre. Reservas pasa de 50.208 a 48.565 M US$; riesgo país, de 644 a 661 pb; dólar oficial, de 1.523 a 1.525 $.
 - **Método validado:** promedios y últimos datos reproducen los valores de septiembre de 2026 de la v1.
+- **EMAE y salarios conectados (8 nov 2026):** se bajan directo de INDEC (`sh_emae_mensual_base2004.xls` e `indice_salarios.csv`), porque la API de datos.gob.ar seguía en julio. Suman agosto de 2026 y los KPI pasan a ago 2026.
+- **Método de EMAE y salarios:** solo se agregan meses posteriores al último dato de la v1; la historia no se pisa. EMAE: desestacionalizado y variación interanual publicados por INDEC. Salario real: índice nominal / IPC, empalmado con el factor de la v1 (constante desde 2018, verificado). Trimestres: promedio de los tres meses, como en la v1. Aviso: INDEC revisa el desestacionalizado cada mes, así que la variación jul→ago en el tablero (+0,16 %) difiere de la publicada (+0,07 %).
 - **Todavía sin conectar:** los grupos marcados como pendientes en `CALENDARIO.md`. Tampoco M2, préstamos reales ni la tabla de «quién le ganó a la inflación» (`carrera`).
 
 ## Revisado y sin cambios

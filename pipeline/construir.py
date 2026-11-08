@@ -269,7 +269,7 @@ def pib_nominal(inv):
 def extender_filas(obj):
     """Suma filas para los períodos nuevos. Las series que no tienen ese dato quedan vacías."""
     meses = set()
-    for archivo in ("deuda_mensual.csv", "bcra_mensual.csv", "series_mensuales.csv", "fiscal_mensual.csv", "actividad_mensual.csv", "global_mensual.csv", "credito_mensual.csv", "itcrm_mensual.csv", "mercado_mensual.csv", "precios_mensual.csv"):
+    for archivo in ("deuda_mensual.csv", "bcra_mensual.csv", "series_mensuales.csv", "fiscal_mensual.csv", "actividad_mensual.csv", "global_mensual.csv", "credito_mensual.csv", "itcrm_mensual.csv", "mercado_mensual.csv", "precios_mensual.csv", "emae_mensual.csv", "salarios_mensual.csv"):
         meses |= {r["mes"] for r in leer_fuente(archivo)[1]}
     cols, filas = leer_tabla(obj["mensual"])
     ultimo = filas[-1]["mes"]
@@ -358,6 +358,76 @@ def aplicar_mercado(obj):
                 if r["mes"] > "2026-09":
                     r["tc_real_index"] = fmt(t / i * k, 3)
     obj["mensual"] = escribir_tabla(cols, filas)
+
+
+def aplicar_indec_mensual(obj):
+    """EMAE y salarios de INDEC: completa solo los meses vacíos, sin pisar la serie de la v1."""
+    cols, filas = leer_tabla(obj["mensual"])
+    M = {r["mes"]: r for r in filas}
+    # Solo se agregan meses posteriores al último dato de la v1: los huecos viejos quedan como estaban.
+    desde = {c: ultimo_con(M, c) for c in ("emae_desest", "emae_ia", "sal_ia", "sal_priv_ia", "sal_real", "sal_priv_real", "sal_pub_real")}
+    _, ef = leer_fuente("emae_mensual.csv")
+    for f in ef:
+        r = M.get(f["mes"])
+        if r is None:
+            continue
+        for c in ("emae_desest", "emae_ia"):
+            if f["mes"] > desde[c] and num(f[c]) is not None:
+                r[c] = fmt(num(f[c]), 6 if c == "emae_ia" else 3)
+    # Salario real: el mismo índice de la v1, encadenado desde su último mes con el índice nominal y el IPC.
+    _, sf = leer_fuente("salarios_mensual.csv")
+    S = {f["mes"]: f for f in sf}
+    reales = {"sal_real": "is_total", "sal_priv_real": "is_priv_reg", "sal_pub_real": "is_publico"}
+    factor = {}
+    for c, nominal in reales.items():
+        ref = max(m for m, r in M.items() if num(r[c]) is not None and m in S and num(S[m][nominal]) and num(r["ipc_index"]))
+        factor[c] = num(M[ref][c]) / (num(S[ref][nominal]) / num(M[ref]["ipc_index"]))
+    for mes, f in S.items():
+        r = M.get(mes)
+        if r is None:
+            continue
+        hace_un_anio = S.get(mover_mes(mes, -12), {})
+        for c, nominal in (("sal_ia", "is_total"), ("sal_priv_ia", "is_priv_reg")):
+            a, b = num(f[nominal]), num(hace_un_anio.get(nominal))
+            if mes > desde[c] and a and b:
+                r[c] = fmt((a / b - 1) * 100)
+        ipc = num(r["ipc_index"])
+        for c, nominal in reales.items():
+            if mes > desde[c] and ipc and num(f[nominal]):
+                r[c] = fmt(num(f[nominal]) / ipc * factor[c])
+    obj["mensual"] = escribir_tabla(cols, filas)
+    # Trimestres completos: promedio de sus tres meses, como en la v1.
+    tcols, tfilas = leer_tabla(obj["trimestral"])
+    for t in tfilas:
+        if "-T" not in t["trimestre"]:
+            continue
+        meses = [mover_mes(t["trim_inicio"], i) for i in range(3)]
+        for c, dec in (("emae_ia", 3), ("sal_real", 3)):
+            v = [num(M.get(m, {}).get(c)) for m in meses]
+            if t[c] == "" and all(x is not None for x in v):
+                t[c] = fmt(sum(v) / 3, dec)
+    obj["trimestral"] = escribir_tabla(tcols, tfilas)
+
+
+def actualizar_kpi_indec(obj):
+    cols, filas = leer_tabla(obj["ultimos"])
+    _, mf = leer_tabla(obj["mensual"])
+    M = {r["mes"]: r for r in mf}
+    for r in filas:
+        if r["id"] not in ("sal_real", "emae"):
+            continue
+        col = "sal_real" if r["id"] == "sal_real" else "emae_ia"
+        m = ultimo_con(M, col)
+        if m <= r["periodo"]:
+            continue
+        a = num(M[m][col])
+        r.update(valor=fmt(a, 2), periodo=m, periodo_txt=f"{MESES[int(m[5:]) - 1]} {m[:4]}")
+        if r["id"] == "sal_real":
+            var = (a / num(M[mover_mes(m, -12)][col]) - 1) * 100
+            r.update(variacion=fmt(var, 2), estado="bueno" if var > 0 else "malo")
+        else:
+            r["estado"] = "bueno" if a > 0 else "malo"
+    obj["ultimos"] = escribir_tabla(cols, filas)
 
 
 def actualizar_kpi_mercado(obj):
@@ -818,6 +888,7 @@ def main():
     ini, obj, fin = leer_datos(BASE)
     extender_filas(obj)
     aplicar_mercado(obj)
+    aplicar_indec_mensual(obj)
     corregir_comercio_rubros(obj)
     quitar_s68(obj)
     M = actualizar_mensual(obj)
@@ -831,6 +902,7 @@ def main():
     agregar_ultimos_e2(obj)
     agregar_etapa3(obj)
     actualizar_kpi_mercado(obj)
+    actualizar_kpi_indec(obj)
     obj["diario"] = escribir_tabla(*leer_fuente("diario.csv"))
     tabla_calendario(obj)
     SALIDA.write_text(ini + json.dumps(obj, ensure_ascii=False) + fin, encoding="utf-8", newline="\n")

@@ -434,8 +434,58 @@ def d_itcrm():
     construir.bajar_itcrm()
 
 
+# Etapa 4: fuentes de INDEC que la API de datos.gob.ar publica con atraso.
+INDEC = "https://www.indec.gob.ar/ftp/cuadros"
+MESES_LARGOS = {n: i + 1 for i, n in enumerate(["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"])}
+
+
+def xls(contenido):
+    """Planilla .xls de INDEC (formato viejo de Excel): necesita xlrd."""
+    import xlrd
+    return xlrd.open_workbook(file_contents=contenido)
+
+
+def d_emae():
+    """EMAE mensual: serie original, variación interanual publicada y desestacionalizada."""
+    h = xls(bajar(f"{INDEC}/economia/sh_emae_mensual_base2004.xls")).sheet_by_index(0)
+    cab = " ".join(str(h.cell_value(2, c)) for c in range(h.ncols)).lower()
+    if "original" not in cab or "desestacionalizada" not in cab:
+        sys.exit(f"EMAE: cambió el formato de la planilla: {cab[:200]}")
+    filas, anio = [], None
+    for r in range(h.nrows):
+        a, mes = h.cell_value(r, 0), str(h.cell_value(r, 1)).strip().lower()
+        if isinstance(a, float) and a > 1990:
+            anio = int(a)
+        m = re.match(r"[a-z]+", mes)
+        if anio and m and m.group() in MESES_LARGOS and isinstance(h.cell_value(r, 2), float):
+            filas.append({"mes": f"{anio}-{MESES_LARGOS[m.group()]:02d}", "emae_original": round(h.cell_value(r, 2), 4),
+                          "emae_ia": round(h.cell_value(r, 3), 4) if isinstance(h.cell_value(r, 3), float) and anio > 2004 else "",  # 2004 no tiene año previo
+                          "emae_desest": round(h.cell_value(r, 4), 4) if isinstance(h.cell_value(r, 4), float) else ""})
+    if len(filas) < 200 or filas[0]["mes"] != "2004-01":
+        sys.exit(f"EMAE: la planilla trae {len(filas)} meses desde {filas[0]['mes'] if filas else '—'}")
+    guardar("emae_mensual.csv", ["mes", "emae_original", "emae_ia", "emae_desest"], filas)
+
+
+def d_salarios():
+    """Índice de salarios de INDEC (base oct 2016 = 100), en su CSV oficial."""
+    texto = bajar(f"{INDEC}/sociedad/indice_salarios.csv").decode("latin-1")
+    cols = {"IS_indice_total": "is_total", "IS_sector_privado_registrado": "is_priv_reg", "IS_sector_publico": "is_publico",
+            "IS_total_registrado": "is_total_reg", "IS_sector_no_registrado": "is_no_reg"}
+    lector = csv.DictReader(io.StringIO(texto), delimiter=";")
+    faltan = set(cols) - set(lector.fieldnames or [])
+    if faltan:
+        sys.exit(f"Salarios: faltan columnas en el CSV de INDEC: {faltan}")
+    filas = []
+    for r in lector:
+        d, m, a = r["periodo"].split("/")
+        filas.append({"mes": f"{a}-{int(m):02d}", **{n: ("" if r[c] in ("", "NA") else float(r[c].replace(",", "."))) for c, n in cols.items()}})
+    filas.sort(key=lambda x: x["mes"])
+    guardar("salarios_mensual.csv", ["mes", *cols.values()], filas)
+
+
 FUENTES_POR_ID = {"diario": d_diario, "mercado": d_mercado, "precios": d_precios, "curva": d_curva, "bcra": d_bcra, "credito": d_credito, "itcrm": d_itcrm, "global": d_global, "deuda_mensual": d_deuda_mensual, "fiscal": d_fiscal,
-                  "series_mensuales": d_series_mensuales, "actividad": d_actividad, "series_trimestrales": d_series_trimestrales, "demanda": d_demanda, "deuda_trim": d_deuda_trim}
+                  "series_mensuales": d_series_mensuales, "actividad": d_actividad, "series_trimestrales": d_series_trimestrales, "demanda": d_demanda, "deuda_trim": d_deuda_trim,
+                  "emae": d_emae, "salarios": d_salarios}
 
 
 def main():

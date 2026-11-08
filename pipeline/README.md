@@ -13,7 +13,7 @@ python pipeline/actualizar.py --simular 2026-12-05  # muestra qué tocaría esa 
 
 ## Comandos individuales
 
-Requiere Python 3, sin paquetes adicionales. Se corre desde la raíz del repo:
+Requiere Python 3. Solo el EMAE necesita `xlrd` (`pip install xlrd==2.0.1`), porque INDEC lo publica en el formato viejo de Excel (.xls). Se corre desde la raíz del repo:
 
 ```
 python pipeline/construir.py                     # arma assets/datos.js

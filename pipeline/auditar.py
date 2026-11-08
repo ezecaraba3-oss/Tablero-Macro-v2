@@ -60,7 +60,8 @@ PERMITIDO = {
     "comercio_rubros": {("2026-06", "x00"), ("2026-08", "x00"), ("2026-08", "x01")},
     "inv_mensual": {(m, c) for m in ("2026-08", "2026-09") for c in ("impo", "ar_efec", "ar_efec_12m")},
     "comercio_anual": {("2026", c) for c in ("expo", "impo", "saldo", "cobertura", "meses", "periodo")},
-    "ultimos": {(k, c) for k in ("saldo_m", "saldo_12m", "expo_12m", "impo_12m", "cobertura") for c in ("valor", "periodo", "periodo_txt", "variacion")} | {(k, c) for k in ("reservas", "tc", "infl_m", "infl_ia", "rem_12m", "tasa_real", "brecha_ccl", "riesgo") for c in ("valor", "periodo", "periodo_txt", "variacion", "variacion_txt")},
+    "ultimos": {(k, c) for k in ("saldo_m", "saldo_12m", "expo_12m", "impo_12m", "cobertura") for c in ("valor", "periodo", "periodo_txt", "variacion")} | {(k, c) for k in ("reservas", "tc", "infl_m", "infl_ia", "rem_12m", "tasa_real", "brecha_ccl", "riesgo") for c in ("valor", "periodo", "periodo_txt", "variacion", "variacion_txt")}
+    | {(k, c) for k in ("sal_real", "emae") for c in ("valor", "periodo", "periodo_txt", "variacion", "estado")},
 }
 COLUMNAS_LIBRES = {"mensual": {"tc_pesos_hoy", "tasa_real_personales", "tasa_real_personales_exante", "itcrm", "itcrb_bra", "itcrb_usa", "itcrb_chn", "itcrb_eur"}}
 control("conserva las tablas de la v1 y suma las nuevas", set(nuevo) - set(base) == {"deuda_perfil", "deuda_resumen", "curva_pesos", "sostenibilidad", "calendario_datos", "diario"} and set(base) <= set(nuevo))
@@ -186,7 +187,7 @@ dif = {m: abs(num(fm[m]["fis_superavit_pib"]) - v) for m, v in prim_v1.items()}
 peor = max(dif, key=dif.get)
 control("superávit primario = resultado primario de la v1", dif[peor] <= 0.02, f"dif máx {dif[peor]:.3f} pp en {peor}; jun 2026: {fm['2026-06']['fis_superavit_pib']} vs {prim_v1['2026-06']}")
 cal_d = tabla(nuevo, "calendario_datos")
-control("calendario completo", len(cal_d) == 25 and sum(x["estado"] == "Automática" for x in cal_d) == 15, str(len(cal_d)))
+control("calendario completo", len(cal_d) == 25 and sum(x["estado"] == "Automática" for x in cal_d) == 17, str(len(cal_d)))
 control("resultado financiero 2025 plausible", -1 < num(M["2025-12"]["fis_financiero_pib"]) < 1, M["2025-12"]["fis_financiero_pib"])
 control("ingresos / PIB plausibles", all(10 < num(x["fis_ingresos_pib"]) < 30 for x in fm.values()), M["2025-12"]["fis_ingresos_pib"])
 
@@ -249,6 +250,24 @@ control("brecha y distancia a la banda cierran", cerca(num(x["brecha_blue"]), (n
 control("plazo fijo renovado encadena", cerca(num(x["pf_index"]), num(M["2026-09"]["pf_index"]) * (1 + num(M["2026-09"]["tem_pf"]) / 100), 0.05))
 dia = tabla(nuevo, "diario")
 control("datos diarios completos y con fecha", len(dia) == 10 and all(re.fullmatch(r"\d{4}-\d{2}-\d{2}", z["fecha"]) and num(z["valor"]) for z in dia), f"hasta {max(z['fecha'] for z in dia)}")
+
+# EMAE y salarios: los meses nuevos salen de INDEC y empalman con la v1.
+em = {x["mes"]: x for x in fuente("emae_mensual.csv")}
+nuevos = [m for m in M if num(M[m]["emae_desest"]) is not None and not num(Mb.get(m, {}).get("emae_desest") or None)]
+mal = [m for m in nuevos if not (cerca(num(M[m]["emae_desest"]), num(em[m]["emae_desest"]), 0.001) and cerca(num(M[m]["emae_ia"]), num(em[m]["emae_ia"]), 0.0001))]
+control("EMAE: meses nuevos iguales a INDEC", not mal, f"nuevos={nuevos}; {mal[:5]}")
+ult_v1 = max(m for m, x in Mb.items() if num(x["emae_desest"]) is not None)
+control("EMAE: la v1 y INDEC coinciden en el último mes común", cerca(num(Mb[ult_v1]["emae_desest"]), num(em[ult_v1]["emae_desest"]), 0.5), f"{ult_v1}: {Mb[ult_v1]['emae_desest']} vs {em[ult_v1]['emae_desest']}")
+sa = {x["mes"]: x for x in fuente("salarios_mensual.csv")}
+mal = []
+for col, nominal in (("sal_real", "is_total"), ("sal_priv_real", "is_priv_reg"), ("sal_pub_real", "is_publico")):
+    k = {m: num(M[m][col]) / (num(sa[m][nominal]) / num(M[m]["ipc_index"])) for m in M if m >= "2024-01" and m in sa and num(M[m][col]) and num(sa[m][nominal]) and num(M[m]["ipc_index"])}
+    if max(k.values()) / min(k.values()) - 1 > 0.002:
+        mal.append((col, round(min(k.values()), 5), round(max(k.values()), 5)))
+control("salario real: el empalme con INDEC no tiene saltos", not mal, str(mal))
+ult_s = max(m for m, x in M.items() if num(x["sal_ia"]) is not None)
+control("salarios: variación interanual igual a INDEC", cerca(num(M[ult_s]["sal_ia"]), (num(sa[ult_s]["is_total"]) / num(sa[mover(ult_s, -12)]["is_total"]) - 1) * 100, 0.01), f"{ult_s}: {M[ult_s]['sal_ia']}")
+control("KPI de EMAE y salario al último mes", kpi["emae"]["periodo"] == max(m for m, x in M.items() if num(x["emae_ia"]) is not None) and kpi["sal_real"]["periodo"] == max(m for m, x in M.items() if num(x["sal_real"]) is not None))
 
 # 8. Página.
 html = (RAIZ / "index.html").read_text(encoding="utf-8")

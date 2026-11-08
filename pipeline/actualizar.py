@@ -36,6 +36,7 @@ ORIGENES = {
     "fred": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=FEDFUNDS",
     "bcb": "https://api.bcb.gov.br/dados/serie/bcdata.sgs.3698/dados/ultimos/1?formato=json",
     "argentinadatos": "https://api.argentinadatos.com/v1/finanzas/letras",
+    "indec": "https://www.indec.gob.ar/ftp/cuadros/sociedad/indice_salarios.csv",
 }
 
 
