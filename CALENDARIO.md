@@ -23,9 +23,9 @@ Generado el 08/11/2026 con `pipeline/actualizar.py`. Las reglas están en `pipel
 | Recaudación y derechos de comercio | ARCA | mensual | oct 2026 | 03/12/2026 | Automática |
 | Industria por sector (IPI manufacturero) | INDEC | mensual | sep 2026 | 10/12/2026 | Automática |
 | Empleo y desempleo (EPH) | INDEC vía datos.gob.ar | trimestral | 2.º trim. 2026 | 24/12/2026 | Automática |
+| Inversión por tipo e IED | INDEC y balance de pagos vía datos.gob.ar | trimestral | 2.º trim. 2026 | 24/12/2026 | Automática |
 | Balance de pagos, posición internacional, subocupación e informalidad | INDEC vía datos.gob.ar | trimestral | 2.º trim. 2026 | 08/01/2027 | Automática |
 | Demanda agregada y PIB | INDEC vía datos.gob.ar | trimestral | 2.º trim. 2026 | 08/01/2027 | Automática |
 | Deuda: ratios y vencimientos | Secretaría de Finanzas | trimestral | 2.º trim. 2026 | 08/01/2027 | Automática |
-| Inversión e IED | INDEC y BCRA | trimestral | 2.º trim. 2026 | 24/12/2026 | Pendiente: sin descarga automática |
 | Pobreza e indigencia | INDEC | semestral | 1S 2026 | marzo y septiembre | Pendiente: sin descarga automática |
 | PIB per cápita y comparaciones internacionales | Banco Mundial y Maddison | anual | 2025 | una vez por año | Pendiente: sin descarga automática |

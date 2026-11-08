@@ -197,7 +197,7 @@ dif = {m: abs(num(fm[m]["fis_superavit_pib"]) - v) for m, v in prim_v1.items()}
 peor = max(dif, key=dif.get)
 control("superávit primario = resultado primario de la v1", dif[peor] <= 0.02, f"dif máx {dif[peor]:.3f} pp en {peor}; jun 2026: {fm['2026-06']['fis_superavit_pib']} vs {prim_v1['2026-06']}")
 cal_d = tabla(nuevo, "calendario_datos")
-control("calendario completo", len(cal_d) == 25 and sum(x["estado"] == "Automática" for x in cal_d) == 22, str(len(cal_d)))
+control("calendario completo", len(cal_d) == 25 and sum(x["estado"] == "Automática" for x in cal_d) == 23, str(len(cal_d)))
 control("resultado financiero 2025 plausible", -1 < num(M["2025-12"]["fis_financiero_pib"]) < 1, M["2025-12"]["fis_financiero_pib"])
 control("ingresos / PIB plausibles", all(10 < num(x["fis_ingresos_pib"]) < 30 for x in fm.values()), M["2025-12"]["fis_ingresos_pib"])
 
@@ -330,6 +330,27 @@ control("EPH: la API reproduce la v1 desde 2016", not mal, f"{len(comunes)} trim
 nuevos = [t for t in ef if t in Tt and num(Tb.get(t, {}).get("desempleo")) is None and num(Tt[t]["desempleo"]) is not None]
 mal = [t for t in nuevos if not cerca(num(Tt[t]["desempleo"]), num(ef[t]["desempleo"]), 0.051)]
 control("EPH: trimestres nuevos iguales a la API", not mal, f"nuevos={nuevos}")
+
+# Inversión: INDEC reproduce la v1 y las derivadas siguen su método.
+inv_f = {x["trimestre"]: x for x in fuente("inversion_trimestral.csv")}
+Ivb = {r["trimestre"]: r for r in tabla(base, "inv_trim")}
+Ivn = {r["trimestre"]: r for r in tabla(nuevo, "inv_trim")}
+# 2004: la v1 toma el total del cuadro 1 (difiere del cuadro 6 en menos de 0,01 %).
+mal = [(t, c) for t in inv_f if t in Ivb and t >= "2005" for c in inv_f[t] if c != "trimestre" and num(Ivb[t].get(c)) is not None and inv_f[t][c] != ""
+       and not cerca(num(Ivb[t][c]), num(inv_f[t][c]), max(0.01, abs(num(Ivb[t][c])) * 1e-6))]
+control("inversión: INDEC y la API reproducen la v1", not mal, f"{len([t for t in inv_f if t in Ivb])} trimestres; {mal[:4]}")
+sys.path.insert(0, str(RAIZ / "pipeline"))
+import construir as _c  # noqa: E402
+ts_b = sorted(Ivb)
+mal = []
+for t in ts_b:
+    for c, v in _c.derivadas_inversion(Ivb, t, ts_b).items():
+        if num(Ivb[t].get(c)) is not None and not cerca(v, num(Ivb[t][c]), 0.002 + abs(v) * 1e-4):
+            mal.append((t, c, Ivb[t][c], round(v, 3)))
+control("inversión: las fórmulas de las derivadas reproducen la v1", not mal, f"{mal[:4]}")
+nuevos = [t for t in Ivn if t not in Ivb]
+mal = [t for t in nuevos if not cerca(num(Ivn[t]["r_tot"]), num(inv_f[t]["r_tot"]), 0.01)]
+control("inversión: trimestres nuevos iguales a INDEC", not mal, f"nuevos={nuevos}")
 
 # 8. Página.
 html = (RAIZ / "index.html").read_text(encoding="utf-8")

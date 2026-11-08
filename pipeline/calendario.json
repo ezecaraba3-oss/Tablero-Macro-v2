@@ -208,8 +208,9 @@
     "rezago_dias": 100
    },
    "salidas": {
-    "trimestral": "^(d_|ct_|p_expo|q_expo|cc_pib_4t)",
-    "mensual": "^(fis_|fg_|credito_pib|presion_trib_12m)"
+    "trimestral": "^(d_|ct_|p_expo|q_expo|cc_pib_4t|pib_ia$)",
+    "mensual": "^(fis_|fg_|credito_pib|presion_trib_12m)",
+    "inv_trim": "^(pib_|ibif_pib)"
    }
   },
   {
@@ -348,20 +349,24 @@
    "salidas": {
     "trimestral": "^(desempleo|actividad$|empleo$)"
    }
-  }
- ],
- "pendientes": [
+  },
   {
-   "nombre": "Inversión e IED",
-   "origen": "INDEC y BCRA",
+   "id": "inversion",
+   "nombre": "Inversión por tipo e IED",
+   "origen": "INDEC y balance de pagos vía datos.gob.ar",
    "frecuencia": "trimestral",
-   "tabla": "inv_trim",
-   "columna": "r_tot",
+   "archivo": "inversion_trimestral.csv",
+   "columna_clave": "r_tot",
    "regla": {
     "tipo": "trimestral",
     "rezago_dias": 85
+   },
+   "salidas": {
+    "inv_trim": ".*"
    }
-  },
+  }
+ ],
+ "pendientes": [
   {
    "nombre": "Pobreza e indigencia",
    "origen": "INDEC",

@@ -613,6 +613,70 @@ def actualizar_kpi_eph(obj):
     obj["ultimos"] = escribir_tabla(cols, filas)
 
 
+TIPOS_IBIF = ("tot", "cons", "ocons", "maq", "maq_n", "maq_i", "tra", "tra_n", "tra_i", "otr")
+
+
+def derivadas_inversion(I, t, ts):
+    """Columnas derivadas de inv_trim con el método de la v1 (verificado en auditar.py)."""
+    r = I[t]
+    i = ts.index(t)
+    previo = I.get(f"{int(t[:4]) - 1}-{t[5:]}")
+    cuatro = [I[x] for x in ts[max(0, i - 3):i + 1]]
+    s4 = (lambda k: sum(num(x[k]) for x in cuatro)) if len(cuatro) == 4 and all(num(x[k]) is not None for x in cuatro for k in ("n_tot", "r_tot")) else None
+    out = {}
+    if num(r["r_cons"]) is not None and num(r["r_ocons"]) is not None:
+        out["r_construc"] = num(r["r_cons"]) + num(r["r_ocons"])
+    if previo:
+        for k in ("tot", "cons", "ocons", "maq", "maq_n", "maq_i", "tra", "otr"):
+            if num(r["r_" + k]) and num(previo["r_" + k]):
+                out[k + "_ia"] = (num(r["r_" + k]) / num(previo["r_" + k]) - 1) * 100
+        if "r_construc" in out and num(previo["r_construc"]):
+            out["construc_ia"] = (out["r_construc"] / num(previo["r_construc"]) - 1) * 100
+    if num(r["n_tot"]) and num(r["pib_n"]):
+        out["ibif_pib_t"] = num(r["n_tot"]) / num(r["pib_n"]) * 100
+    if s4:
+        out["ibif_idx"] = s4("r_tot") / 4
+        for k in ("cons", "ocons", "maq", "tra", "otr"):
+            if all(num(x["n_" + k]) is not None for x in cuatro):
+                out["sh_" + k] = s4("n_" + k) / s4("n_tot") * 100
+        if all(num(x["n_maq_i"]) is not None and num(x["n_maq"]) for x in cuatro):
+            out["imp_maq_sh"] = s4("n_maq_i") / s4("n_maq") * 100
+        if all(num(x["pib_n"]) for x in cuatro):
+            out["ibif_pib_4t"] = s4("n_tot") / s4("pib_n") * 100
+    if len(cuatro) == 4 and all(num(x["ied_flujo"]) is not None for x in cuatro):
+        out["ied_flujo_4t"] = sum(num(x["ied_flujo"]) for x in cuatro)
+    return out
+
+
+def aplicar_inversion(obj):
+    """Inversión por tipo e IED: suma los trimestres posteriores a la v1 y calcula sus derivadas."""
+    cols, filas = leer_tabla(obj["inv_trim"])
+    I = {r["trimestre"]: r for r in filas}
+    F = {f["trimestre"]: f for f in leer_fuente("inversion_trimestral.csv")[1]}
+    D = {f["trimestre"]: f for f in leer_fuente("demanda_trimestral.csv")[1]}
+    desde = {c: ultimo_con(I, c) for c in cols[2:]}
+    for t in sorted(x for x in F if x > filas[-1]["trimestre"] and num(F[x]["r_tot"]) is not None):
+        I[t] = {**{c: "" for c in cols}, "trimestre": t, "trim_inicio": f"{t[:4]}-{(int(t[-1]) - 1) * 3 + 1:02d}"}
+        filas.append(I[t])
+    nuevos = [t for t in I if any(t > desde[p + k] for p in ("r_", "n_") for k in TIPOS_IBIF)]
+    for t in sorted(I):
+        r, f, dm = I[t], F.get(t, {}), D.get(t, {})
+        for c in [p + k for p in ("r_", "n_") for k in TIPOS_IBIF] + ["ied_cap", "ied_deu"]:
+            if t > desde[c] and num(f.get(c)) is not None:
+                r[c] = fmt(num(f[c]), 3)
+        if t > desde["ied_flujo"] and num(r["ied_cap"]) is not None and num(r["ied_deu"]) is not None:
+            r["ied_flujo"] = fmt(num(r["ied_cap"]) + num(r["ied_deu"]), 3)
+        for c, origen in (("pib_n", "pib_n"), ("pib_r", "d_pib")):
+            if t > desde[c] and num(dm.get(origen)) is not None:
+                r[c] = fmt(num(dm[origen]), 3)
+    ts = sorted(I)
+    for t in ts:
+        for c, v in derivadas_inversion(I, t, ts).items():
+            if t > desde[c] and (t in nuevos or c == "ied_flujo_4t"):
+                I[t][c] = fmt(v, 3)
+    obj["inv_trim"] = escribir_tabla(cols, filas)
+
+
 def actualizar_kpi_indec(obj):
     cols, filas = leer_tabla(obj["ultimos"])
     _, mf = leer_tabla(obj["mensual"])
@@ -995,6 +1059,8 @@ def agregar_etapa3(obj):
             r[f"ct_{c[2:]}"] = fmt(aporte, 2)
             suma += aporte
         r["ct_resto"] = fmt((d["d_pib"] / prev["d_pib"] - 1) * 100 - suma, 2)
+        if r.get("pib_ia", "") == "":  # trimestre posterior a la v1: el crecimiento sale de la misma serie
+            r["pib_ia"] = fmt((d["d_pib"] / prev["d_pib"] - 1) * 100, 3)
     obj["trimestral"] = escribir_tabla(cols, filas)
 
     ccols, cfilas = leer_fuente("curva_pesos.csv")
@@ -1100,6 +1166,7 @@ def main():
     aplicar_comercio(obj)
     aplicar_recaudacion(obj)
     aplicar_eph(obj)
+    aplicar_inversion(obj)
     M = actualizar_mensual(obj)
     actualizar_inv_mensual(obj, M)
     actualizar_comercio_anual(obj, M)

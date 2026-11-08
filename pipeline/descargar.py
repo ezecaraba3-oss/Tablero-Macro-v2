@@ -811,9 +811,56 @@ def d_eph():
     guardar("eph_trimestral.csv", ["trimestre", *trim], a_filas(trim, "trimestre"))
 
 
+# Inversión: formación bruta de capital fijo por tipo (INDEC, oferta y demanda, cuadros 6 y 14) e IED (balance de pagos).
+FILAS_IBIF = [("tot", "Formación bruta de capital fijo"), ("cons", "Construcciones"), ("ocons", "Otras construcciones"), ("maq", "Maquinaria y equipo"),
+              ("maq_n", "Nacional"), ("maq_i", "Importado"), ("tra", "Equipo de transporte"), ("tra_n", "Nacional"), ("tra_i", "Importado"), ("otr", "Otros activos fijos")]
+SERIES_IED = {"ied_cap": "160.2_CFIN_PASINTAL_0_T_57", "ied_deu": "160.2_CFIN_INUDA_0_T_52"}
+
+
+def d_inversion():
+    pagina = bajar("https://www.indec.gob.ar/Nivel4/Tema/3/9/47").decode("utf-8", "replace")
+    nombres = re.findall(r"ftp/cuadros/economia/sh_oferta_demanda_(\d{2})_(\d{2})\.xls", pagina)
+    if not nombres:
+        sys.exit("Inversión: no encontré sh_oferta_demanda en la página de INDEC")
+    mm, aa = max(nombres, key=lambda x: (x[1], x[0]))
+    b = xls(bajar(f"{INDEC}/economia/sh_oferta_demanda_{mm}_{aa}.xls"))
+    datos = {}
+    for hoja, pre in (("cuadro 6", "r_"), ("cuadro 14", "n_")):
+        h = b.sheet_by_name(hoja)
+        cols, anio = {}, None
+        for c in range(2, h.ncols):
+            a = re.match(r"\s*(\d{4})", str(h.cell_value(3, c)))
+            anio = int(a.group(1)) if a else anio
+            q = re.match(r"\s*(\d)", str(h.cell_value(4, c)))
+            if anio and q:
+                cols[c] = f"{anio}-T{q.group(1)}"
+        if min(cols.values()) != "2004-T1":
+            sys.exit(f"Inversión: {hoja} empieza en {min(cols.values())}")
+        r, filas = 5, {}
+        for clave, rotulo in FILAS_IBIF:
+            while r < h.nrows and not str(h.cell_value(r, 1)).strip().startswith(rotulo):
+                r += 1
+            if r == h.nrows:
+                sys.exit(f"Inversión: no encontré «{rotulo}» en {hoja}")
+            filas[clave] = r
+            r += 1
+        for c, t in cols.items():
+            for clave, fila in filas.items():
+                v = h.cell_value(fila, c)
+                if isinstance(v, float):
+                    datos.setdefault(t, {"trimestre": t})[pre + clave] = round(v, 3)
+    for c, serie in api(SERIES_IED).items():
+        for m, v in serie.items():
+            t = f"{m[:4]}-T{(int(m[5:]) + 2) // 3}"
+            if t in datos:
+                datos[t][c] = round(v, 3)
+    cols = ["trimestre", *[p + k for p in ("r_", "n_") for k, _ in FILAS_IBIF], *SERIES_IED]
+    guardar("inversion_trimestral.csv", cols, [{c: datos[t].get(c, "") for c in cols} for t in sorted(datos)])
+
+
 FUENTES_POR_ID = {"diario": d_diario, "mercado": d_mercado, "precios": d_precios, "curva": d_curva, "bcra": d_bcra, "credito": d_credito, "itcrm": d_itcrm, "global": d_global, "deuda_mensual": d_deuda_mensual, "fiscal": d_fiscal,
                   "series_mensuales": d_series_mensuales, "actividad": d_actividad, "series_trimestrales": d_series_trimestrales, "demanda": d_demanda, "deuda_trim": d_deuda_trim,
-                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio, "consumo": d_consumo, "recaudacion": d_recaudacion, "eph": d_eph}
+                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio, "consumo": d_consumo, "recaudacion": d_recaudacion, "eph": d_eph, "inversion": d_inversion}
 
 
 def main():
