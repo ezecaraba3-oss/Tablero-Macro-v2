@@ -278,21 +278,29 @@
     "mensual": "^ipi_(ia|desest)$",
     "sectores": "^[is]\\d"
    }
-  }
- ],
- "pendientes": [
+  },
   {
-   "nombre": "Comercio exterior",
+   "id": "comercio",
+   "nombre": "Comercio exterior: totales, rubros y socios",
    "origen": "INDEC",
    "frecuencia": "mensual",
-   "tabla": "comercio_paises",
-   "columna": "x_tot",
+   "archivo": "comercio_mensual.csv",
+   "columna_clave": "expo",
    "regla": {
     "tipo": "mensual",
     "dia": 20,
     "rezago": 1
+   },
+   "salidas": {
+    "mensual": "^(expo|impo|saldo|cobertura)",
+    "comercio_paises": ".*",
+    "comercio_rubros": ".*",
+    "comercio_anual": ".*",
+    "inv_mensual": "^(impo|ar_efec)"
    }
-  },
+  }
+ ],
+ "pendientes": [
   {
    "nombre": "Recaudación",
    "origen": "ARCA",

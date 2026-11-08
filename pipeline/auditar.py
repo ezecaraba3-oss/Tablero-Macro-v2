@@ -31,6 +31,10 @@ def num(x):
         return None
 
 
+def fuente(n):
+    return list(csv.DictReader(io.StringIO((RAIZ / "pipeline" / "fuentes" / n).read_text(encoding="utf-8"))))
+
+
 def control(nombre, ok, detalle=""):
     print(("OK    " if ok else "FALLA ") + nombre + (f" | {detalle}" if detalle else ""))
     if not ok:
@@ -88,7 +92,7 @@ for n in base:
                 continue
             if rb.get(c) != ra.get(c):
                 total += 1
-                if not rb.get(c) and n == "mensual" and rb[clave] >= "2025-10":
+                if not rb.get(c) and n in ("mensual", "inv_mensual") and rb[clave] >= "2025-10":
                     continue  # completar celdas vacías recientes no pisa datos de la v1
                 if (rb[clave], c) not in PERMITIDO.get(n, ()):
                     inesperados.append((n, rb[clave], c, rb.get(c), ra.get(c)))
@@ -105,8 +109,9 @@ mal = [m for m in R if not cerca(num(R[m]["x00"]), num(P[m]["x_tot"]), 1) and m 
 control("x00 = x_tot desde 2017", not mal, str(mal[:6]))
 control("x00 no repite valores en 2026", len({R[m]["x00"] for m in R if m.startswith("2026")}) == len([m for m in R if m.startswith("2026")]))
 control("x01 no repite valores en 2026", len({R[m]["x01"] for m in R if m.startswith("2026")}) == len([m for m in R if m.startswith("2026")]))
-control("mensual llega hasta el último mes de comercio", cerca(num(M["2026-09"]["expo"]), num(P["2026-09"]["x_tot"]), 0.1) and cerca(num(M["2026-09"]["impo"]), num(P["2026-09"]["m_tot"]), 0.1))
-for mes in ("2026-08", "2026-09"):
+ult_c = max(P)
+control("mensual llega hasta el último mes de comercio", cerca(num(M[ult_c]["expo"]), num(P[ult_c]["x_tot"]), 0.1) and cerca(num(M[ult_c]["impo"]), num(P[ult_c]["m_tot"]), 0.1), ult_c)
+for mes in sorted(m for m in P if m >= "2026-08"):
     ven = [mover(mes, -i) for i in range(12)]
     control(f"expo_12m e impo_12m cierran en {mes}",
             cerca(num(M[mes]["expo_12m"]), sum(num(M[m]["expo"]) for m in ven), 0.2)
@@ -114,10 +119,19 @@ for mes in ("2026-08", "2026-09"):
 ven = [mover("2026-07", -i) for i in range(12)]
 control("la fórmula de 12 meses reproduce la v1 (jul 2026)", cerca(sum(num(Mb[m]["expo"]) for m in ven), num(Mb["2026-07"]["expo_12m"]), 0.5))
 ca = {r["anio"]: r for r in tabla(nuevo, "comercio_anual")}
-control("comercio_anual 2026 suma nueve meses", ca["2026"]["meses"] == "9" and cerca(num(ca["2026"]["expo"]), sum(num(M[f"2026-{i:02d}"]["expo"]) for i in range(1, 10)), 0.2))
+n_c = int(ult_c[5:])
+control(f"comercio_anual {ult_c[:4]} suma {n_c} meses", ca[ult_c[:4]]["meses"] == str(n_c) and cerca(num(ca[ult_c[:4]]["expo"]), sum(num(M[f"{ult_c[:4]}-{i:02d}"]["expo"]) for i in range(1, n_c + 1)), 0.2))
 kpi = {r["id"]: r for r in tabla(nuevo, "ultimos")}
-control("KPI de comercio al último mes", all(kpi[k]["periodo"] == "2026-09" for k in ("saldo_m", "saldo_12m", "expo_12m", "impo_12m", "cobertura")))
-control("KPI saldo mensual cierra", cerca(num(kpi["saldo_m"]["valor"]), num(M["2026-09"]["expo"]) - num(M["2026-09"]["impo"]), 0.11))
+control("KPI de comercio al último mes", all(kpi[k]["periodo"] == ult_c for k in ("saldo_m", "saldo_12m", "expo_12m", "impo_12m", "cobertura")))
+control("KPI saldo mensual cierra", cerca(num(kpi["saldo_m"]["valor"]), num(M[ult_c]["expo"]) - num(M[ult_c]["impo"]), 0.11))
+tot_f = {x["mes"]: x for x in fuente("comercio_mensual.csv")}
+nuevos_c = [m for m in P if m > max(r["mes"] for r in tabla(base, "comercio_paises"))]
+mal = [m for m in nuevos_c if not (cerca(num(P[m]["x_tot"]), num(tot_f[m]["expo"]), 0.01) and cerca(num(R[m]["m00"]), num(tot_f[m]["impo"]), 0.01))]
+control("comercio: meses nuevos iguales a INDEC", not mal, f"nuevos={nuevos_c}; {mal[:3]}")
+mal = [m for m in nuevos_c if P[m]["x_bra"] and not cerca(sum(num(P[m][f"x_{k}"]) for k in ("bra", "pry", "ury", "ven")), num(P[m]["x_bmcs"]), 0.05)]
+control("comercio: Mercosur = suma de sus países en los meses nuevos", not mal, str(mal))
+mal = [m for m in nuevos_c if R[m]["x01"] and not cerca(sum(num(R[m][f"x0{i}"]) for i in range(1, 5)), num(R[m]["x00"]), 1)]
+control("comercio: los grandes rubros suman el total en los meses nuevos", not mal, str(mal))
 
 # 3. Sectores.
 control("s68 eliminada", "s68" not in S[0] and all(r["clave"] != "s68" for r in tabla(nuevo, "sectores_meta")))
@@ -147,10 +161,6 @@ control("ITCRM sin huecos", len(itc) == (int(max(itc)[:4]) - 1997) * 12 + int(ma
 control("ITCRM en rango razonable", 30 < min(itc.values()) and max(itc.values()) < 300, f"min={min(itc.values())} max={max(itc.values())}")
 
 # 6. Etapa 2: identidades contables.
-def fuente(n):
-    return list(csv.DictReader(io.StringIO((RAIZ / "pipeline" / "fuentes" / n).read_text(encoding="utf-8"))))
-
-
 meses_d = [m for m, x in M.items() if num(x["deuda_bruta"])]
 control("deuda desde ene 2019 hasta sep 2026 o más", min(meses_d) == "2019-01" and max(meses_d) >= "2026-09", f"{min(meses_d)}..{max(meses_d)}")
 dm = fuente("deuda_mensual.csv")
@@ -187,7 +197,7 @@ dif = {m: abs(num(fm[m]["fis_superavit_pib"]) - v) for m, v in prim_v1.items()}
 peor = max(dif, key=dif.get)
 control("superávit primario = resultado primario de la v1", dif[peor] <= 0.02, f"dif máx {dif[peor]:.3f} pp en {peor}; jun 2026: {fm['2026-06']['fis_superavit_pib']} vs {prim_v1['2026-06']}")
 cal_d = tabla(nuevo, "calendario_datos")
-control("calendario completo", len(cal_d) == 25 and sum(x["estado"] == "Automática" for x in cal_d) == 18, str(len(cal_d)))
+control("calendario completo", len(cal_d) == 25 and sum(x["estado"] == "Automática" for x in cal_d) == 19, str(len(cal_d)))
 control("resultado financiero 2025 plausible", -1 < num(M["2025-12"]["fis_financiero_pib"]) < 1, M["2025-12"]["fis_financiero_pib"])
 control("ingresos / PIB plausibles", all(10 < num(x["fis_ingresos_pib"]) < 30 for x in fm.values()), M["2025-12"]["fis_ingresos_pib"])
 

@@ -547,9 +547,152 @@ def d_salarios():
     guardar("salarios_mensual.csv", ["mes", *cols.values()], filas)
 
 
+# Comercio exterior (INDEC, Intercambio comercial argentino).
+PAGINA_ICA = "https://www.indec.gob.ar/Nivel4/Tema/3/2/40"
+MES3 = {n[:3]: i for n, i in MESES_LARGOS.items()}
+PAISES = {"bra": "Brasil", "pry": "Paraguay", "ury": "Uruguay", "ven": "Venezuela", "bol": "Bolivia", "chl": "Chile", "col": "Colombia", "mex": "México", "per": "Perú",
+          "ecu": "Ecuador", "can": "Canadá", "usa": "Estados Unidos", "deu": "Alemania", "aut": "Austria", "bel": "Bélgica", "esp": "España", "fra": "Francia", "ita": "Italia",
+          "nld": "Países Bajos", "pol": "Polonia", "prt": "Portugal", "gbr": "Reino Unido", "che": "Suiza", "ind": "India", "rus": "Rusia", "chn": "China", "kor": "República de Corea",
+          "idn": "Indonesia", "jpn": "Japón", "tha": "Tailandia", "twn": "Taiwán", "vnm": "Viet Nam", "isr": "Israel", "aus": "Australia", "nzl": "Nueva Zelandia", "ago": "Angola",
+          "dza": "Argelia", "egy": "Egipto", "mar": "Marruecos", "zaf": "Sudáfrica"}
+# Bloques con la misma definición que la v1 (verificada con el acumulado ene-sep 2026).
+UE = ["Alemania", "Austria", "Bélgica", "Bulgaria", "Croacia", "Chipre", "Dinamarca", "Eslovaquia", "Eslovenia", "España", "Estonia", "Finlandia", "Francia", "Grecia", "Hungría",
+      "Irlanda", "Italia", "Letonia", "Lituania", "Luxemburgo", "Malta", "Países Bajos", "Polonia", "Portugal", "Republica Checa", "Rumania", "Suecia"]
+MEDIO_ORIENTE = ["Arabia Saudita", "Bahrein", "Emiratos Árabes Unidos", "Irán", "Iraq", "Israel", "Jordania", "Kuwait", "Líbano", "Omán", "Qatar", "Siria", "Yemen"]
+ASIA_PACIFICO = ["China", "Japón", "República de Corea", "Taiwán", "Brunei Darussalam", "Camboya", "Filipinas", "Indonesia", "Malasia", "Myanmar", "Singapur", "Tailandia",
+                 "Timor Oriental", "Viet Nam"]
+BLOQUES = ["bmcs", "bral", "bnam", "buex", "basp", "bmor", "bafr", "bres"]
+
+
+def mes_texto(texto):
+    """'Septiembree', 'Sep', 'Ene-sep 2026e' (tras el guion) -> número de mes."""
+    m = re.match(r"\s*([a-záéíóú]{3})", str(texto).lower())
+    return MES3.get(m.group(1)) if m else None
+
+
+def guardar_preservando(nombre, columnas, nuevas):
+    """Agrega o reemplaza filas por mes y conserva las ya guardadas: INDEC solo publica el último mes."""
+    previas = {}
+    ruta = FUENTES / nombre
+    if ruta.exists():
+        previas = {r["mes"]: r for r in csv.DictReader(io.StringIO(ruta.read_text(encoding="utf-8")))}
+    for f in nuevas:
+        previas[f["mes"]] = {c: f.get(c, "") for c in columnas}
+    guardar(nombre, columnas, [previas[m] for m in sorted(previas)])
+
+
+def d_comercio():
+    # 1. Totales mensuales desde 1990.
+    h = xls(bajar(f"{INDEC}/economia/balanmensual.xls")).sheet_by_index(0)
+    if "Exportaciones" not in str(h.cell_value(2, 2)) or "Importaciones" not in str(h.cell_value(2, 7)):
+        sys.exit("Comercio: cambió el formato de balanmensual.xls")
+    tot, anio = [], None
+    for r in range(h.nrows):
+        a = re.match(r"(\d{4})", str(h.cell_value(r, 0)))
+        anio = int(a.group(1)) if a else anio
+        m = mes_texto(h.cell_value(r, 1))
+        if anio and m and isinstance(h.cell_value(r, 2), float):
+            impo = h.cell_value(r, 7)
+            tot.append({"mes": f"{anio}-{m:02d}", "expo": round(h.cell_value(r, 2), 2), "impo": round(impo, 2) if isinstance(impo, float) else ""})
+    if tot[0]["mes"] != "1990-01":
+        sys.exit(f"Comercio: balanmensual empieza en {tot[0]['mes']}")
+    # Los demás archivos cambian de nombre con cada año o publicación: se buscan en la página.
+    pagina = bajar(PAGINA_ICA).decode("utf-8", "replace")
+
+    def libro_de(patron):
+        m = sorted(set(re.findall(patron, pagina)))
+        if not m:
+            sys.exit(f"Comercio: no encontré {patron} en la página del ICA")
+        return xls(bajar("https://www.indec.gob.ar/" + m[-1]))
+
+    # 2. Grandes rubros y usos, mes a mes en el año en curso y el anterior.
+    porm = {}
+    for hoja, claves in ((libro_de(r"ftp/cuadros/economia/expo_grandes_rubros_\d{4}_\d{4}\.xls").sheet_by_index(0), ["x00", "x01", "x02", "x03", "x04"]),
+                         (libro_de(r"ftp/cuadros/economia/impo_uso_economico_\d{4}_\d{4}\.xls").sheet_by_index(0), ["m00", "m01", "m02", "m03", "m04", "m05", "m06", "m07"])):
+        anios = [int(re.search(r"\d{4}", str(hoja.cell_value(3, c))).group()) for c in (2, 3)]
+        for r in range(9, hoja.nrows):
+            m = mes_texto(hoja.cell_value(r, 1))
+            if not m or "total" in str(hoja.cell_value(r, 1)).lower():
+                continue
+            for k, a in enumerate(anios):
+                vals = [hoja.cell_value(r, 2 + 4 * i + k) for i in range(len(claves))]
+                if all(isinstance(v, float) for v in vals):
+                    porm.setdefault(f"{a}-{m:02d}", {"mes": f"{a}-{m:02d}"}).update({c: round(v, 2) for c, v in zip(claves, vals)})
+
+    # 3. Subrubros de exportación del último mes (informe técnico, cuadro 12).
+    c12 = libro_de(r"ftp/cuadros/economia/ica_cuadros_\d{2}_\d{2}_\d{2}\.xls").sheet_by_name("c12")
+    anio12 = re.search(r"\d{4}", str(c12.cell_value(3, 3))).group()
+    mes12 = f"{anio12}-{mes_texto(c12.cell_value(2, 3)):02d}"
+    sub = {"PP": [], "MOA": [], "MOI": [], "CyE": []}
+    grupo = None
+    for r in range(5, c12.nrows):
+        g, s, v = str(c12.cell_value(r, 1)).strip(), str(c12.cell_value(r, 2)).strip(), c12.cell_value(r, 3)
+        if g:
+            grupo = next((k for k in sub if f"({k})" in g), None)
+        elif s and grupo and isinstance(v, float):
+            sub[grupo].append(v)
+    if [len(sub[k]) for k in sub] != [12, 16, 14, 5]:
+        sys.exit(f"Comercio: cambió la lista de subrubros del cuadro 12: {[len(sub[k]) for k in sub]}")
+    cye = sub["CyE"]  # crudo, carburantes, lubricantes, gas, resto
+    # xd44 suma carburantes y lubricantes, como la v1; xd46 (energía eléctrica) ya no se publica aparte.
+    xd = sub["PP"] + sub["MOA"] + sub["MOI"] + [cye[0], cye[1] + cye[2], cye[3], None, cye[4]]
+    porm.setdefault(mes12, {"mes": mes12}).update({f"xd{i:02d}": ("" if v is None else round(v, 2)) for i, v in enumerate(xd, start=1)})
+    cols_r = ["mes", "x00", "x01", "x02", "x03", "x04", *[f"xd{i:02d}" for i in range(1, 48)], "m00", "m01", "m02", "m03", "m04", "m05", "m06", "m07"]
+    guardar_preservando("comercio_rubros.csv", cols_r, porm.values())
+
+    # 4. Países y bloques: acumulado del año menos la foto del mes anterior.
+    h = libro_de(r"ftp/cuadros/economia/balan_continentes_paises_\d{4}_\d{4}\.xls").sheet_by_index(0)
+    enc = str(h.cell_value(4, 2))
+    a, m = int(re.search(r"\d{4}", enc).group()), mes_texto(enc.split("-")[-1])
+    if "Exportaciones" not in str(h.cell_value(3, 2)) or "Importaciones" not in str(h.cell_value(3, 6)) or not m:
+        sys.exit(f"Comercio por país: cambió el formato: {enc}")
+    filas = {}
+    for r in range(h.nrows):
+        n = str(h.cell_value(r, 1)).replace("\xa0", " ").strip()
+        if n and n not in filas:  # la primera fila de cada país incluye sus zonas francas y territorios
+            filas[n] = r
+    faltan = [n for n in [*PAISES.values(), *UE, *MEDIO_ORIENTE, *ASIA_PACIFICO, "Total", "Total de América", "Total de África"] if n not in filas]
+    if faltan:
+        sys.exit(f"Comercio por país: faltan filas {faltan}")
+
+    def valor(nombre, col):
+        x = h.cell_value(filas[nombre], col)
+        return x / 1000 if isinstance(x, float) else 0.0  # «s» (secreto) y «-» cuentan como cero
+
+    acum = {}
+    for fl, col in (("x", 2), ("m", 6)):
+        for k, n in PAISES.items():
+            acum[f"{fl}_{k}"] = valor(n, col)
+        acum[f"{fl}_tot"] = valor("Total", col)
+        acum[f"{fl}_bmcs"] = sum(acum[f"{fl}_{k}"] for k in ("bra", "pry", "ury", "ven"))
+        acum[f"{fl}_bnam"] = acum[f"{fl}_usa"] + acum[f"{fl}_can"]
+        acum[f"{fl}_bral"] = valor("Total de América", col) - acum[f"{fl}_bmcs"] - acum[f"{fl}_bnam"]
+        acum[f"{fl}_buex"] = sum(valor(n, col) for n in UE)
+        acum[f"{fl}_basp"] = sum(valor(n, col) for n in ASIA_PACIFICO)
+        acum[f"{fl}_bmor"] = sum(valor(n, col) for n in MEDIO_ORIENTE)
+        acum[f"{fl}_bafr"] = valor("Total de África", col)
+        acum[f"{fl}_bres"] = acum[f"{fl}_tot"] - sum(acum[f"{fl}_{b}"] for b in BLOQUES[:-1])
+    periodo = f"{a}-{m:02d}"
+    ruta_foto = FUENTES / "comercio_paises_acum.csv"
+    foto = {r["clave"]: r for r in csv.DictReader(io.StringIO(ruta_foto.read_text(encoding="utf-8")))} if ruta_foto.exists() else {}
+    previo = next(iter(foto.values()), {}).get("periodo")
+    nuevas = []
+    if m == 1:
+        nuevas.append({"mes": periodo, **{k: round(v, 2) for k, v in acum.items()}})
+    elif previo == f"{a}-{m - 1:02d}":
+        nuevas.append({"mes": periodo, **{k: round(v - float(foto[k]["valor"]), 2) + 0.0 for k, v in acum.items()}})
+    elif previo != periodo:
+        print(f"AVISO: comercio por país: la foto guardada es de {previo} y el acumulado llega a {periodo}; ese mes queda sin desglose")
+    claves = ["mes"] + [f"{fl}_{k}" for fl in ("x", "m") for k in ["tot", *PAISES, *BLOQUES]]
+    guardar_preservando("comercio_paises.csv", claves, nuevas)
+    if previo != periodo:
+        guardar("comercio_paises_acum.csv", ["periodo", "clave", "valor"], [{"periodo": periodo, "clave": k, "valor": round(v, 4)} for k, v in acum.items()])
+    # Los totales van al final: si algo falla antes, la fuente sigue vencida y se reintenta al otro día.
+    guardar("comercio_mensual.csv", ["mes", "expo", "impo"], tot)
+
 FUENTES_POR_ID = {"diario": d_diario, "mercado": d_mercado, "precios": d_precios, "curva": d_curva, "bcra": d_bcra, "credito": d_credito, "itcrm": d_itcrm, "global": d_global, "deuda_mensual": d_deuda_mensual, "fiscal": d_fiscal,
                   "series_mensuales": d_series_mensuales, "actividad": d_actividad, "series_trimestrales": d_series_trimestrales, "demanda": d_demanda, "deuda_trim": d_deuda_trim,
-                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi}
+                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio}
 
 
 def main():

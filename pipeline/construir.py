@@ -152,8 +152,8 @@ def actualizar_mensual(obj):
     _, paises = leer_tabla(obj["comercio_paises"])
     P = {r["mes"]: r for r in paises}
 
-    # Comercio: agosto revisado y septiembre, ya presentes en comercio_paises.
-    for mes in ("2026-08", "2026-09"):
+    # Comercio: desde agosto de 2026 (revisado en la v1) toma los totales de comercio_paises.
+    for mes in sorted(m for m in P if m >= "2026-08" and m in M and num(P[m]["x_tot"]) is not None):
         M[mes]["expo"] = fmt(num(P[mes]["x_tot"]), 1)
         M[mes]["impo"] = fmt(num(P[mes]["m_tot"]), 1)
         recalcular_comercio(M, mes)
@@ -195,7 +195,7 @@ def actualizar_mensual(obj):
 def actualizar_inv_mensual(obj, M):
     cols, filas = leer_tabla(obj["inv_mensual"])
     D = {r["mes"]: r for r in filas}
-    for mes in ("2026-08", "2026-09"):
+    for mes in sorted(m for m in D if m >= "2026-08" and num(M.get(m, {}).get("impo")) is not None and num(D[m]["der_imp"]) is not None and num(D[m]["tc"]) is not None):
         r = D[mes]
         r["impo"] = M[mes]["impo"]
         r["ar_efec"] = fmt(num(r["der_imp"]) / (num(r["impo"]) * num(r["tc"])) * 100)
@@ -208,19 +208,28 @@ def actualizar_inv_mensual(obj, M):
 
 def actualizar_comercio_anual(obj, M):
     cols, filas = leer_tabla(obj["comercio_anual"])
-    for r in filas:
-        if r["anio"] == "2026":
-            meses = [f"2026-{i:02d}" for i in range(1, 10)]
-            e = sum(num(M[m]["expo"]) for m in meses)
-            i = sum(num(M[m]["impo"]) for m in meses)
-            r.update(expo=fmt(e, 1), impo=fmt(i, 1), saldo=fmt(e - i, 1), cobertura=fmt(e / i * 100, 1),
-                     meses="9", periodo="ene–sep (parcial)")
+    A = {r["anio"]: r for r in filas}
+    ultimo = max(m for m, r in M.items() if num(r["expo"]) is not None and num(r["impo"]) is not None)
+    anio = ultimo[:4]
+    if anio not in A:
+        A[anio] = {**{c: "" for c in cols}, "anio": anio}
+        filas.insert(0, A[anio]) if filas[0]["anio"] > filas[-1]["anio"] else filas.append(A[anio])
+    meses = [f"{anio}-{i:02d}" for i in range(1, int(ultimo[5:]) + 1)]
+    e = sum(num(M[m]["expo"]) for m in meses)
+    i = sum(num(M[m]["impo"]) for m in meses)
+    r = A[anio]
+    r.update(expo=fmt(e, 1), impo=fmt(i, 1), saldo=fmt(e - i, 1), cobertura=fmt(e / i * 100, 1), meses=str(len(meses)),
+             periodo="año completo" if len(meses) == 12 else f"ene–{MESES[len(meses) - 1]} (parcial)")
+    previo = A.get(str(int(anio) - 1))
+    if len(meses) == 12 and previo and num(previo["expo"]) and num(previo["impo"]):
+        r.update(var_expo=fmt((e / num(previo["expo"]) - 1) * 100, 1), var_impo=fmt((i / num(previo["impo"]) - 1) * 100, 1))
     obj["comercio_anual"] = escribir_tabla(cols, filas)
 
 
 def actualizar_ultimos(obj, M):
     cols, filas = leer_tabla(obj["ultimos"])
-    mes, previo = "2026-09", "2025-09"
+    mes = max(m for m, r in M.items() if num(r["expo"]) is not None and num(r["impo"]) is not None)
+    previo = mover_mes(mes, -12)
     txt = f"{MESES[int(mes[5:]) - 1]} {mes[:4]}"
     nuevos = {
         "saldo_m": ("saldo_neto", lambda a, b: a - b, 1),
@@ -269,7 +278,7 @@ def pib_nominal(inv):
 def extender_filas(obj):
     """Suma filas para los períodos nuevos. Las series que no tienen ese dato quedan vacías."""
     meses = set()
-    for archivo in ("deuda_mensual.csv", "bcra_mensual.csv", "series_mensuales.csv", "fiscal_mensual.csv", "actividad_mensual.csv", "global_mensual.csv", "credito_mensual.csv", "itcrm_mensual.csv", "mercado_mensual.csv", "precios_mensual.csv", "emae_mensual.csv", "salarios_mensual.csv", "ipi_mensual.csv"):
+    for archivo in ("deuda_mensual.csv", "bcra_mensual.csv", "series_mensuales.csv", "fiscal_mensual.csv", "actividad_mensual.csv", "global_mensual.csv", "credito_mensual.csv", "itcrm_mensual.csv", "mercado_mensual.csv", "precios_mensual.csv", "emae_mensual.csv", "salarios_mensual.csv", "ipi_mensual.csv", "comercio_mensual.csv"):
         meses |= {r["mes"] for r in leer_fuente(archivo)[1]}
     cols, filas = leer_tabla(obj["mensual"])
     ultimo = filas[-1]["mes"]
@@ -436,6 +445,29 @@ def aplicar_indec_sectores(obj):
             if r is not None and f["mes"] > desde[c] and num(f[c]) is not None:
                 r[c] = fmt(num(f[c]), 6 if c == "ipi_ia" else 3)
     obj["mensual"] = escribir_tabla(cols, filas)
+
+
+# Socios sin serie comparable con la v1 (ver CORRECCIONES.md): sus meses nuevos quedan vacíos.
+SOCIOS_SIN_EMPALME = ("gbr", "bral", "bmor", "bres")
+
+
+def aplicar_comercio(obj):
+    """Comercio exterior de INDEC: suma los meses posteriores a la v1 en las tablas por socio y por rubro."""
+    _, tf = leer_fuente("comercio_mensual.csv")
+    T = {f["mes"]: f for f in tf}
+    for tabla, fuente, tot in (("comercio_paises", "comercio_paises.csv", ("x_tot", "m_tot")), ("comercio_rubros", "comercio_rubros.csv", ("x00", "m00"))):
+        cols, filas = leer_tabla(obj[tabla])
+        F = {f["mes"]: f for f in leer_fuente(fuente)[1]}
+        ultimo = filas[-1]["mes"]
+        for mes in sorted(m for m in T if m > ultimo):
+            r = {**{c: "" for c in cols}, "mes": mes, tot[0]: fmt(num(T[mes]["expo"]), 2), tot[1]: fmt(num(T[mes]["impo"]), 2)}
+            for c in cols:
+                if c in ("mes", *tot) or c.split("_")[-1] in SOCIOS_SIN_EMPALME:
+                    continue
+                if num(F.get(mes, {}).get(c)) is not None:
+                    r[c] = fmt(num(F[mes][c]), 2)
+            filas.append(r)
+        obj[tabla] = escribir_tabla(cols, filas)
 
 
 def actualizar_kpi_indec(obj):
@@ -921,6 +953,7 @@ def main():
     corregir_comercio_rubros(obj)
     quitar_s68(obj)
     aplicar_indec_sectores(obj)
+    aplicar_comercio(obj)
     M = actualizar_mensual(obj)
     actualizar_inv_mensual(obj, M)
     actualizar_comercio_anual(obj, M)
