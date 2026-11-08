@@ -690,9 +690,81 @@ def d_comercio():
     # Los totales van al final: si algo falla antes, la fuente sigue vencida y se reintenta al otro día.
     guardar("comercio_mensual.csv", ["mes", "expo", "impo"], tot)
 
+# Consumo: supermercados, autoservicios mayoristas y centros de compras (INDEC).
+# Columnas de cada planilla (cuadro por rubro, total del país) -> claves de la tabla consumo_rubros.
+COLS_SUPER = {"sp00": 1, "sp05": 2, "sp01": 3, "sp07": 4, "sp04": 5, "sp02": 6, "sp06": 7, "sp10": 8, "sp03": 9, "sp09": 10, "sp08": 11, "sp11": 12}
+COLS_MAYOR = {"my00": 1, "my03": 2, "my01": 3, "my07": 4, "my04": 5, "my05": 6, "my08": 7, "my02": 8, "my09": 9, "my06": 10, "my10": 11}
+COLS_SHOP = {"sh00": 1, "sh01": 2, "sh03": 3, "sh06": 4, "sh02": 5, "sh04": 6, "sh08": 7, "sh09": 8, "sh05": 9, "sh07": 10, "sh10": 11}
+ROTULOS_SUPER = {2: "Bebidas", 3: "Almacén", 8: "Alimentos prepar", 12: "Otros"}
+ROTULOS_MAYOR = {2: "Bebidas", 3: "Almacén", 8: "Artículos de lim", 11: "Otros"}
+ROTULOS_SHOP = {2: "Indumentaria", 5: "Patio de comid", 11: "Otros"}
+
+
+def mes_serial(v):
+    """Fecha de Excel (número de días) -> AAAA-MM."""
+    try:
+        return (dt.date(1899, 12, 30) + dt.timedelta(days=int(float(v)))).strftime("%Y-%m")
+    except (TypeError, ValueError):
+        return None
+
+
+def num_celda(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None  # «s» (secreto estadístico) o «-»
+
+
+def d_consumo():
+    filas = {}
+
+    def sumar(mes, datos):
+        filas.setdefault(mes, {"mes": mes}).update(datos)
+
+    for archivo, cols, rotulos, real in (("serie_supermercados.xlsx", COLS_SUPER, ROTULOS_SUPER, "sp_real"),
+                                         ("serie_autoservicios_mayoristas.xlsx", COLS_MAYOR, ROTULOS_MAYOR, "my_real")):
+        h = libro(bajar(f"{INDEC}/economia/{archivo}"))
+        totales = next(v for k, v in h.items() if k.startswith("Cuadro 3"))
+        rubros = next(v for k, v in h.items() if k.startswith("Cuadro 5"))
+        cab = next(r for r in sorted(rubros) if str(rubros[r].get(1, "")).strip() == "Total")
+        for c, texto in rotulos.items():
+            if not str(rubros[cab].get(c, "")).startswith(texto):
+                sys.exit(f"{archivo}: la columna {c} ya no es «{texto}»: {rubros[cab].get(c)}")
+        for r, v in totales.items():
+            mes = mes_serial(v.get(0))
+            if mes and num_celda(v.get(2)) is not None:
+                sumar(mes, {real: round(num_celda(v[2]), 3)})
+        for r, v in rubros.items():
+            mes = mes_serial(v.get(0))
+            if mes and num_celda(v.get(1)) is not None:
+                sumar(mes, {k: ("" if num_celda(v.get(c)) is None else round(num_celda(v[c]) / 1000, 3)) for k, c in cols.items()})  # miles -> millones
+
+    # Centros de compras: el archivo cambia de nombre cada mes (sh_compras_MM_AA.xls).
+    pagina = bajar("https://www.indec.gob.ar/Nivel4/Tema/3/1/36").decode("utf-8", "replace")
+    nombres = re.findall(r"ftp/cuadros/economia/sh_compras_(\d{2})_(\d{2})\.xls", pagina)
+    if not nombres:
+        sys.exit("Centros de compras: no encontré la planilla en la página de INDEC")
+    mm, aa = max(nombres, key=lambda x: (x[1], x[0]))
+    b = xls(bajar(f"{INDEC}/economia/sh_compras_{mm}_{aa}.xls"))
+    ventas, indices = b.sheet_by_name("CuadroWEB_3"), b.sheet_by_name("CuadroWEB_2")
+    for c, texto in ROTULOS_SHOP.items():
+        if not str(ventas.cell_value(3, c)).startswith(texto):
+            sys.exit(f"Centros de compras: la columna {c} ya no es «{texto}»: {ventas.cell_value(3, c)}")
+    for r in range(ventas.nrows):
+        mes = mes_serial(ventas.cell_value(r, 0))
+        if mes and isinstance(ventas.cell_value(r, 1), float):
+            sumar(mes, {k: ("" if num_celda(ventas.cell_value(r, c)) is None else round(ventas.cell_value(r, c), 3)) for k, c in COLS_SHOP.items()})
+    for r in range(indices.nrows):
+        mes = mes_serial(indices.cell_value(r, 0))
+        if mes and isinstance(indices.cell_value(r, 3), float):
+            sumar(mes, {"sh_indice_real": round(indices.cell_value(r, 3), 4)})  # índice a precios constantes, 2017 = 100
+    cols = ["mes", *COLS_SUPER, "sp_real", *COLS_MAYOR, "my_real", *COLS_SHOP, "sh_indice_real"]
+    guardar("consumo_rubros.csv", cols, [{c: filas[m].get(c, "") for c in cols} for m in sorted(filas)])
+
+
 FUENTES_POR_ID = {"diario": d_diario, "mercado": d_mercado, "precios": d_precios, "curva": d_curva, "bcra": d_bcra, "credito": d_credito, "itcrm": d_itcrm, "global": d_global, "deuda_mensual": d_deuda_mensual, "fiscal": d_fiscal,
                   "series_mensuales": d_series_mensuales, "actividad": d_actividad, "series_trimestrales": d_series_trimestrales, "demanda": d_demanda, "deuda_trim": d_deuda_trim,
-                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio}
+                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio, "consumo": d_consumo}
 
 
 def main():

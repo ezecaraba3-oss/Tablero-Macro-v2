@@ -14,6 +14,7 @@ Generado el 08/11/2026 con `pipeline/actualizar.py`. Las reglas están en `pipel
 | Capacidad instalada, construcción y servicios públicos | INDEC vía datos.gob.ar | mensual | jul 2026 | 25/11/2026 | Automática |
 | Actividad (EMAE), total y por rama | INDEC | mensual | ago 2026 | 25/11/2026 | Automática |
 | Salarios | INDEC | mensual | ago 2026 | 25/11/2026 | Automática |
+| Consumo por rubros: supermercados, mayoristas y shoppings | INDEC | mensual | ago 2026 | 25/11/2026 | Automática |
 | Deuda: stock, moneda, acreedor y pagos | Secretaría de Finanzas | mensual | sep 2026 | 28/11/2026 | Automática |
 | Dólar, tasas y riesgo país: cierre mensual | BCRA y ArgentinaDatos | diaria en origen, cierre mensual en el tablero | oct 2026 | 03/12/2026 | Automática |
 | BCRA: reservas, compras, dólares en bancos, pases | API del BCRA | diaria en origen, cierre mensual en el tablero | oct 2026 | 03/12/2026 | Automática |
@@ -23,7 +24,6 @@ Generado el 08/11/2026 con `pipeline/actualizar.py`. Las reglas están en `pipel
 | Balance de pagos, posición internacional, subocupación e informalidad | INDEC vía datos.gob.ar | trimestral | 2.º trim. 2026 | 08/01/2027 | Automática |
 | Demanda agregada y PIB | INDEC vía datos.gob.ar | trimestral | 2.º trim. 2026 | 08/01/2027 | Automática |
 | Deuda: ratios y vencimientos | Secretaría de Finanzas | trimestral | 2.º trim. 2026 | 08/01/2027 | Automática |
-| Consumo por rubros | INDEC | mensual | ago 2026 | 25/11/2026 | Pendiente: sin descarga automática |
 | Recaudación | ARCA | mensual | oct 2026 | 03/12/2026 | Pendiente: sin descarga automática |
 | Empleo y desempleo (EPH) | INDEC | trimestral | 2.º trim. 2026 | 24/12/2026 | Pendiente: sin descarga automática |
 | Inversión e IED | INDEC y BCRA | trimestral | 2.º trim. 2026 | 24/12/2026 | Pendiente: sin descarga automática |

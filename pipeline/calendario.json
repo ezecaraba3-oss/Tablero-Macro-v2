@@ -298,6 +298,22 @@
     "comercio_anual": ".*",
     "inv_mensual": "^(impo|ar_efec)"
    }
+  },
+  {
+   "id": "consumo",
+   "nombre": "Consumo por rubros: supermercados, mayoristas y shoppings",
+   "origen": "INDEC",
+   "frecuencia": "mensual",
+   "archivo": "consumo_rubros.csv",
+   "columna_clave": "sp00",
+   "regla": {
+    "tipo": "mensual",
+    "dia": 25,
+    "rezago": 2
+   },
+   "salidas": {
+    "consumo_rubros": ".*"
+   }
   }
  ],
  "pendientes": [
@@ -311,18 +327,6 @@
     "tipo": "mensual",
     "dia": 3,
     "rezago": 1
-   }
-  },
-  {
-   "nombre": "Consumo por rubros",
-   "origen": "INDEC",
-   "frecuencia": "mensual",
-   "tabla": "consumo_rubros",
-   "columna": "sp00",
-   "regla": {
-    "tipo": "mensual",
-    "dia": 25,
-    "rezago": 2
    }
   },
   {

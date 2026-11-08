@@ -470,6 +470,38 @@ def aplicar_comercio(obj):
         obj[tabla] = escribir_tabla(cols, filas)
 
 
+def aplicar_consumo(obj):
+    """Ventas por rubro de INDEC: suma los meses posteriores a la v1 sin pisar su historia."""
+    cols, filas = leer_tabla(obj["consumo_rubros"])
+    C = {r["mes"]: r for r in filas}
+    _, mf = leer_tabla(obj["mensual"])
+    ipc = {r["mes"]: num(r["ipc_index"]) for r in mf}
+    F = {f["mes"]: f for f in leer_fuente("consumo_rubros.csv")[1]}
+    desde = {c: ultimo_con(C, c) for c in cols[1:]}
+    # Shoppings a precios constantes: el índice de INDEC escalado como en la v1.
+    ref = max(m for m in C if num(C[m]["sh_real"]) and num(F.get(m, {}).get("sh_indice_real")))
+    k_shop = num(C[ref]["sh_real"]) / num(F[ref]["sh_indice_real"])
+    for mes in sorted(m for m in F if m > filas[-1]["mes"]):
+        C[mes] = {**{c: "" for c in cols}, "mes": mes}
+        filas.append(C[mes])
+    for mes, f in F.items():
+        r = C.get(mes)
+        if r is None:
+            continue
+        for c in cols[1:]:
+            if mes <= desde[c]:
+                continue
+            if c == "ipc":
+                v = ipc.get(mes)
+            elif c == "sh_real":
+                v = num(f["sh_indice_real"]) * k_shop if num(f["sh_indice_real"]) is not None else None
+            else:
+                v = num(f.get(c))
+            if v is not None:
+                r[c] = fmt(v, 3)
+    obj["consumo_rubros"] = escribir_tabla(cols, filas)
+
+
 def actualizar_kpi_indec(obj):
     cols, filas = leer_tabla(obj["ultimos"])
     _, mf = leer_tabla(obj["mensual"])
@@ -950,6 +982,7 @@ def main():
     extender_filas(obj)
     aplicar_mercado(obj)
     aplicar_indec_mensual(obj)
+    aplicar_consumo(obj)
     corregir_comercio_rubros(obj)
     quitar_s68(obj)
     aplicar_indec_sectores(obj)

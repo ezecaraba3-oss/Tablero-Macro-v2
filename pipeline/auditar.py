@@ -197,7 +197,7 @@ dif = {m: abs(num(fm[m]["fis_superavit_pib"]) - v) for m, v in prim_v1.items()}
 peor = max(dif, key=dif.get)
 control("superávit primario = resultado primario de la v1", dif[peor] <= 0.02, f"dif máx {dif[peor]:.3f} pp en {peor}; jun 2026: {fm['2026-06']['fis_superavit_pib']} vs {prim_v1['2026-06']}")
 cal_d = tabla(nuevo, "calendario_datos")
-control("calendario completo", len(cal_d) == 25 and sum(x["estado"] == "Automática" for x in cal_d) == 19, str(len(cal_d)))
+control("calendario completo", len(cal_d) == 25 and sum(x["estado"] == "Automática" for x in cal_d) == 20, str(len(cal_d)))
 control("resultado financiero 2025 plausible", -1 < num(M["2025-12"]["fis_financiero_pib"]) < 1, M["2025-12"]["fis_financiero_pib"])
 control("ingresos / PIB plausibles", all(10 < num(x["fis_ingresos_pib"]) < 30 for x in fm.values()), M["2025-12"]["fis_ingresos_pib"])
 
@@ -293,6 +293,18 @@ control("IPI: la v1 y INDEC coinciden en el último mes común (revisión menor 
 ipi_m = {x["mes"]: x for x in fuente("ipi_mensual.csv")}
 ult_i = max(m for m, x in M.items() if num(x["ipi_desest"]) is not None)
 control("IPI mensual al día con INDEC", ult_i == max(ipi_m) and cerca(num(M[ult_i]["ipi_ia"]), num(ipi_m[ult_i]["ipi_ia"]), 0.0001), ult_i)
+
+# Consumo: los meses nuevos salen de INDEC.
+Cb = {r["mes"]: r for r in tabla(base, "consumo_rubros")}
+Cn = {r["mes"]: r for r in tabla(nuevo, "consumo_rubros")}
+cf = {x["mes"]: x for x in fuente("consumo_rubros.csv")}
+nuevos = [m for m in Cn if m not in Cb]
+mal = [(m, c) for m in nuevos for c in Cn[m] if c[:2] in ("sp", "my", "sh") and c not in ("sh_real",) and Cn[m][c] != "" and not cerca(num(Cn[m][c]), num(cf[m][c]), 0.01)]
+control("consumo: meses nuevos iguales a INDEC", not mal, f"nuevos={nuevos}; {mal[:4]}")
+mal = [(m, p) for m in nuevos for p, n in (("sp", 11), ("my", 10), ("sh", 10)) if Cn[m][f"{p}00"] and not cerca(sum(num(Cn[m][f"{p}{i:02d}"]) or 0 for i in range(1, n + 1)), num(Cn[m][f"{p}00"]), num(Cn[m][f"{p}00"]) * 0.01)]
+control("consumo: los rubros suman el total en los meses nuevos", not mal, str(mal))
+ult = max(Cb)
+control("consumo: la v1 y INDEC coinciden en el último mes común", all(cerca(num(Cb[ult][c]), num(cf[ult][c]), 1) for c in ("sp00", "my00", "sh00", "sp_real", "my_real")), ult)
 
 # 8. Página.
 html = (RAIZ / "index.html").read_text(encoding="utf-8")
