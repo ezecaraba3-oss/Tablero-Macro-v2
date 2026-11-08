@@ -269,7 +269,7 @@ def pib_nominal(inv):
 def extender_filas(obj):
     """Suma filas para los períodos nuevos. Las series que no tienen ese dato quedan vacías."""
     meses = set()
-    for archivo in ("deuda_mensual.csv", "bcra_mensual.csv", "series_mensuales.csv", "fiscal_mensual.csv", "actividad_mensual.csv", "global_mensual.csv", "credito_mensual.csv", "itcrm_mensual.csv", "mercado_mensual.csv", "precios_mensual.csv", "emae_mensual.csv", "salarios_mensual.csv"):
+    for archivo in ("deuda_mensual.csv", "bcra_mensual.csv", "series_mensuales.csv", "fiscal_mensual.csv", "actividad_mensual.csv", "global_mensual.csv", "credito_mensual.csv", "itcrm_mensual.csv", "mercado_mensual.csv", "precios_mensual.csv", "emae_mensual.csv", "salarios_mensual.csv", "ipi_mensual.csv"):
         meses |= {r["mes"] for r in leer_fuente(archivo)[1]}
     cols, filas = leer_tabla(obj["mensual"])
     ultimo = filas[-1]["mes"]
@@ -407,6 +407,35 @@ def aplicar_indec_mensual(obj):
             if t[c] == "" and all(x is not None for x in v):
                 t[c] = fmt(sum(v) / 3, dec)
     obj["trimestral"] = escribir_tabla(tcols, tfilas)
+
+
+def aplicar_indec_sectores(obj):
+    """EMAE por rama e IPI: suma los meses nuevos sin pisar la historia de la v1 (que no se revisa)."""
+    cols, filas = leer_tabla(obj["sectores"])
+    S = {r["mes"]: r for r in filas}
+    desde = {c: ultimo_con(S, c) for c in cols[1:]}
+    fuentes = [leer_fuente("emae_sectores.csv")[1], leer_fuente("ipi_sectores.csv")[1]]
+    for mes in sorted({f["mes"] for fs in fuentes for f in fs} - set(S)):
+        if mes > filas[-1]["mes"]:
+            S[mes] = {**{c: "" for c in cols}, "mes": mes}
+            filas.append(S[mes])
+    for fs in fuentes:
+        for f in fs:
+            r = S.get(f["mes"])
+            for c, v in f.items():
+                if r is not None and c in desde and f["mes"] > desde[c] and num(v) is not None:
+                    r[c] = fmt(num(v), 3)
+    obj["sectores"] = escribir_tabla(cols, filas)
+    # IPI en la tabla mensual: nivel desestacionalizado y variación interanual.
+    cols, filas = leer_tabla(obj["mensual"])
+    M = {r["mes"]: r for r in filas}
+    desde = {c: ultimo_con(M, c) for c in ("ipi_ia", "ipi_desest")}
+    for f in leer_fuente("ipi_mensual.csv")[1]:
+        r = M.get(f["mes"])
+        for c in desde:
+            if r is not None and f["mes"] > desde[c] and num(f[c]) is not None:
+                r[c] = fmt(num(f[c]), 6 if c == "ipi_ia" else 3)
+    obj["mensual"] = escribir_tabla(cols, filas)
 
 
 def actualizar_kpi_indec(obj):
@@ -891,6 +920,7 @@ def main():
     aplicar_indec_mensual(obj)
     corregir_comercio_rubros(obj)
     quitar_s68(obj)
+    aplicar_indec_sectores(obj)
     M = actualizar_mensual(obj)
     actualizar_inv_mensual(obj, M)
     actualizar_comercio_anual(obj, M)

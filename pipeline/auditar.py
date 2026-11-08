@@ -187,7 +187,7 @@ dif = {m: abs(num(fm[m]["fis_superavit_pib"]) - v) for m, v in prim_v1.items()}
 peor = max(dif, key=dif.get)
 control("superávit primario = resultado primario de la v1", dif[peor] <= 0.02, f"dif máx {dif[peor]:.3f} pp en {peor}; jun 2026: {fm['2026-06']['fis_superavit_pib']} vs {prim_v1['2026-06']}")
 cal_d = tabla(nuevo, "calendario_datos")
-control("calendario completo", len(cal_d) == 25 and sum(x["estado"] == "Automática" for x in cal_d) == 17, str(len(cal_d)))
+control("calendario completo", len(cal_d) == 25 and sum(x["estado"] == "Automática" for x in cal_d) == 18, str(len(cal_d)))
 control("resultado financiero 2025 plausible", -1 < num(M["2025-12"]["fis_financiero_pib"]) < 1, M["2025-12"]["fis_financiero_pib"])
 control("ingresos / PIB plausibles", all(10 < num(x["fis_ingresos_pib"]) < 30 for x in fm.values()), M["2025-12"]["fis_ingresos_pib"])
 
@@ -268,6 +268,21 @@ control("salario real: el empalme con INDEC no tiene saltos", not mal, str(mal))
 ult_s = max(m for m, x in M.items() if num(x["sal_ia"]) is not None)
 control("salarios: variación interanual igual a INDEC", cerca(num(M[ult_s]["sal_ia"]), (num(sa[ult_s]["is_total"]) / num(sa[mover(ult_s, -12)]["is_total"]) - 1) * 100, 0.01), f"{ult_s}: {M[ult_s]['sal_ia']}")
 control("KPI de EMAE y salario al último mes", kpi["emae"]["periodo"] == max(m for m, x in M.items() if num(x["emae_ia"]) is not None) and kpi["sal_real"]["periodo"] == max(m for m, x in M.items() if num(x["sal_real"]) is not None))
+
+# Sectores e IPI: los meses nuevos salen de INDEC.
+Sb = {r["mes"]: r for r in tabla(base, "sectores")}
+Sn = {r["mes"]: r for r in S}
+ipi_f = {x["mes"]: x for x in fuente("ipi_sectores.csv")}
+ema_f = {x["mes"]: x for x in fuente("emae_sectores.csv")}
+nuevos = sorted(set(Sn) - set(Sb))
+mal = [(m, c) for m in nuevos for c, v in Sn[m].items() if c != "mes" and v != "" and not cerca(num(v), num((ipi_f if c[0] in "is" else ema_f)[m][c]), 0.001)]
+control("sectores: meses nuevos iguales a INDEC", not mal, f"nuevos={nuevos}; {mal[:5]}")
+ult = max(Sb)
+dif = max(abs(num(Sb[ult][c]) / num(ipi_f[ult][c]) - 1) for c in ("i00", "i01", "i04", "i07", "i14") if num(ipi_f[ult][c]))
+control("IPI: la v1 y INDEC coinciden en el último mes común (revisión menor al 2 %)", dif < 0.02, f"{ult}: {dif:.4f}")
+ipi_m = {x["mes"]: x for x in fuente("ipi_mensual.csv")}
+ult_i = max(m for m, x in M.items() if num(x["ipi_desest"]) is not None)
+control("IPI mensual al día con INDEC", ult_i == max(ipi_m) and cerca(num(M[ult_i]["ipi_ia"]), num(ipi_m[ult_i]["ipi_ia"]), 0.0001), ult_i)
 
 # 8. Página.
 html = (RAIZ / "index.html").read_text(encoding="utf-8")

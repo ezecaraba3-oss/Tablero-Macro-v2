@@ -229,7 +229,7 @@
   },
   {
    "id": "emae",
-   "nombre": "Actividad (EMAE)",
+   "nombre": "Actividad (EMAE), total y por rama",
    "origen": "INDEC",
    "frecuencia": "mensual",
    "archivo": "emae_mensual.csv",
@@ -241,7 +241,8 @@
    },
    "salidas": {
     "mensual": "^emae_",
-    "trimestral": "^emae_ia$"
+    "trimestral": "^emae_ia$",
+    "sectores": "^e\\d"
    }
   },
   {
@@ -259,6 +260,23 @@
    "salidas": {
     "mensual": "^sal_",
     "trimestral": "^sal_real$"
+   }
+  },
+  {
+   "id": "ipi",
+   "nombre": "Industria por sector (IPI manufacturero)",
+   "origen": "INDEC",
+   "frecuencia": "mensual",
+   "archivo": "ipi_mensual.csv",
+   "columna_clave": "ipi_desest",
+   "regla": {
+    "tipo": "mensual",
+    "dia": 10,
+    "rezago": 2
+   },
+   "salidas": {
+    "mensual": "^ipi_(ia|desest)$",
+    "sectores": "^[is]\\d"
    }
   }
  ],
@@ -285,18 +303,6 @@
     "tipo": "mensual",
     "dia": 3,
     "rezago": 1
-   }
-  },
-  {
-   "nombre": "Industria y construcción por sector (IPI)",
-   "origen": "INDEC",
-   "frecuencia": "mensual",
-   "tabla": "sectores",
-   "columna": "i00",
-   "regla": {
-    "tipo": "mensual",
-    "dia": 10,
-    "rezago": 2
    }
   },
   {

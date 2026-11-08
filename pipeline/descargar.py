@@ -464,6 +464,70 @@ def d_emae():
     if len(filas) < 200 or filas[0]["mes"] != "2004-01":
         sys.exit(f"EMAE: la planilla trae {len(filas)} meses desde {filas[0]['mes'] if filas else '—'}")
     guardar("emae_mensual.csv", ["mes", "emae_original", "emae_ia", "emae_desest"], filas)
+    # Ramas (letras A a O), mismas claves que la tabla de sectores: e00 es el total original.
+    h = xls(bajar(f"{INDEC}/economia/sh_emae_actividad_base2004.xls")).sheet_by_index(0)
+    if not str(h.cell_value(2, 2)).startswith("A") or not str(h.cell_value(2, 16)).startswith("O"):
+        sys.exit("EMAE por rama: cambió el orden de las columnas")
+    total = {f["mes"]: f["emae_original"] for f in filas}
+    ramas, anio = [], None
+    for r in range(h.nrows):
+        a, mes = h.cell_value(r, 0), str(h.cell_value(r, 1)).strip().lower()
+        if isinstance(a, float) and a > 1990:
+            anio = int(a)
+        m = re.match(r"[a-z]+", mes)
+        if anio and m and m.group() in MESES_LARGOS and isinstance(h.cell_value(r, 2), float):
+            clave = f"{anio}-{MESES_LARGOS[m.group()]:02d}"
+            ramas.append({"mes": clave, "e00": total.get(clave, ""), **{f"e{i:02d}": round(h.cell_value(r, 1 + i), 3) for i in range(1, 16)}})
+    guardar("emae_sectores.csv", ["mes", *[f"e{i:02d}" for i in range(16)]], ramas)
+
+
+# IPI manufacturero: nivel general (i00), 16 divisiones (i01 a i16) y sus subclases, en el orden de la planilla.
+SUBCLASES_IPI = [13, 2, 4, 3, 3, 5, 8, 3, 6, 3, 3, 4, 3, 3, 2, 2]
+DIVISIONES_IPI = ["Alimentos", "Productos de tabaco", "Productos textiles", "Prendas", "Madera", "Refinación", "Sustancias", "Productos de caucho", "Productos minerales",
+                  "Industrias metálicas", "Productos de metal", "Maquinaria y equipo", "Otros equipos", "Vehículos", "Otro equipo", "Muebles"]
+
+
+def claves_ipi():
+    claves, s = ["i00"], 0
+    for d, n in enumerate(SUBCLASES_IPI, start=1):
+        claves.append(f"i{d:02d}")
+        claves += [f"s{s + j:02d}" for j in range(1, n + 1)]
+        s += n
+    return claves
+
+
+def d_ipi():
+    # El nombre del archivo lleva el año: se busca en la página del IPI.
+    ruta = enlace("https://www.indec.gob.ar/Nivel4/Tema/3/6/14", r"ftp/cuadros/economia/sh_ipi_manufacturero_\d{4}\.xls", "ftp/cuadros/economia/sh_ipi_manufacturero_2026.xls")
+    libro_ipi = xls(bajar("https://www.indec.gob.ar/" + ruta))
+    h, c1 = libro_ipi.sheet_by_name("Cuadro 2"), libro_ipi.sheet_by_name("Cuadro 1")
+    claves = claves_ipi()
+    cols = {k: 3 + i for i, k in enumerate(claves)}
+    if "IPI" not in str(h.cell_value(3, 3)):
+        sys.exit("IPI: la columna 3 ya no es el nivel general")
+    for d, nombre in enumerate(DIVISIONES_IPI, start=1):
+        if not str(h.cell_value(3, cols[f"i{d:02d}"])).startswith(nombre):
+            sys.exit(f"IPI: la división i{d:02d} ya no es «{nombre}»: {h.cell_value(3, cols[f'i{d:02d}'])}")
+
+    def meses(hoja, desde):
+        """Filas de datos: el año solo figura en enero (a veces con asterisco)."""
+        anio, out = None, {}
+        for r in range(desde, hoja.nrows):
+            a = re.match(r"\s*(\d{4})", str(hoja.cell_value(r, 1)).replace(".0", ""))
+            if a:
+                anio = int(a.group(1))
+            m = re.match(r"[a-z]+", str(hoja.cell_value(r, 2)).strip().lower())
+            if anio and m and m.group() in MESES_LARGOS:
+                out[f"{anio}-{MESES_LARGOS[m.group()]:02d}"] = r
+        return out
+
+    filas_s = [{"mes": mes, **{k: (round(h.cell_value(r, c), 3) if isinstance(h.cell_value(r, c), float) else "") for k, c in cols.items()}} for mes, r in meses(h, 5).items()]
+    if filas_s[0]["mes"] != "2016-01" or len(filas_s) < 100:
+        sys.exit(f"IPI: la planilla empieza en {filas_s[0]['mes']} con {len(filas_s)} meses")
+    filas_m = [{"mes": mes, "ipi_ia": round(c1.cell_value(r, 4), 6) if isinstance(c1.cell_value(r, 4), float) else "",
+                "ipi_desest": round(c1.cell_value(r, 7), 3) if isinstance(c1.cell_value(r, 7), float) else ""} for mes, r in meses(c1, 7).items()]
+    guardar("ipi_sectores.csv", ["mes", *claves], filas_s)
+    guardar("ipi_mensual.csv", ["mes", "ipi_ia", "ipi_desest"], filas_m)
 
 
 def d_salarios():
@@ -485,7 +549,7 @@ def d_salarios():
 
 FUENTES_POR_ID = {"diario": d_diario, "mercado": d_mercado, "precios": d_precios, "curva": d_curva, "bcra": d_bcra, "credito": d_credito, "itcrm": d_itcrm, "global": d_global, "deuda_mensual": d_deuda_mensual, "fiscal": d_fiscal,
                   "series_mensuales": d_series_mensuales, "actividad": d_actividad, "series_trimestrales": d_series_trimestrales, "demanda": d_demanda, "deuda_trim": d_deuda_trim,
-                  "emae": d_emae, "salarios": d_salarios}
+                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi}
 
 
 def main():

@@ -74,6 +74,7 @@ Decisiones de método:
 - **Método validado:** promedios y últimos datos reproducen los valores de septiembre de 2026 de la v1.
 - **EMAE y salarios conectados (8 nov 2026):** se bajan directo de INDEC (`sh_emae_mensual_base2004.xls` e `indice_salarios.csv`), porque la API de datos.gob.ar seguía en julio. Suman agosto de 2026 y los KPI pasan a ago 2026.
 - **Método de EMAE y salarios:** solo se agregan meses posteriores al último dato de la v1; la historia no se pisa. EMAE: desestacionalizado y variación interanual publicados por INDEC. Salario real: índice nominal / IPC, empalmado con el factor de la v1 (constante desde 2018, verificado). Trimestres: promedio de los tres meses, como en la v1. Aviso: INDEC revisa el desestacionalizado cada mes, así que la variación jul→ago en el tablero (+0,16 %) difiere de la publicada (+0,07 %).
+- **IPI y EMAE por rama conectados (8 nov 2026):** el IPI manufacturero (nivel general, 16 divisiones y 67 subclases, más el desestacionalizado y la variación interanual) se baja de `sh_ipi_manufacturero_AAAA.xls`, buscado en la página del IPI porque el nombre cambia con el año. Suma septiembre de 2026. Las ramas del EMAE salen de `sh_emae_actividad_base2004.xls` y quedan atadas al EMAE. Neumáticos y otros productos de caucho siguen vacíos: INDEC los publica como «s» (secreto estadístico).
 - **Todavía sin conectar:** los grupos marcados como pendientes en `CALENDARIO.md`. Tampoco M2, préstamos reales ni la tabla de «quién le ganó a la inflación» (`carrera`).
 
 ## Revisado y sin cambios

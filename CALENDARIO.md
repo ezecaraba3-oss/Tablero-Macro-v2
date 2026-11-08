@@ -11,17 +11,17 @@ Generado el 08/11/2026 con `pipeline/actualizar.py`. Las reglas están en `pipel
 | Fiscal: ingresos, gastos e intereses | Hacienda vía datos.gob.ar | mensual | ago 2026 | 25/11/2026 | Automática |
 | Empleo registrado y turismo | Secretaría de Trabajo y BCRA vía datos.gob.ar | mensual | jun 2026 | 25/11/2026 | Automática |
 | Capacidad instalada, construcción y servicios públicos | INDEC vía datos.gob.ar | mensual | jul 2026 | 25/11/2026 | Automática |
-| Actividad (EMAE) | INDEC | mensual | ago 2026 | 25/11/2026 | Automática |
+| Actividad (EMAE), total y por rama | INDEC | mensual | ago 2026 | 25/11/2026 | Automática |
 | Salarios | INDEC | mensual | ago 2026 | 25/11/2026 | Automática |
 | Deuda: stock, moneda, acreedor y pagos | Secretaría de Finanzas | mensual | sep 2026 | 28/11/2026 | Automática |
 | Dólar, tasas y riesgo país: cierre mensual | BCRA y ArgentinaDatos | diaria en origen, cierre mensual en el tablero | oct 2026 | 03/12/2026 | Automática |
 | BCRA: reservas, compras, dólares en bancos, pases | API del BCRA | diaria en origen, cierre mensual en el tablero | oct 2026 | 03/12/2026 | Automática |
 | Crédito al sector privado | API del BCRA | diaria en origen, cierre mensual en el tablero | oct 2026 | 03/12/2026 | Automática |
 | Tipo de cambio real multilateral | BCRA | diaria en origen, promedio mensual en el tablero | oct 2026 | 03/12/2026 | Automática |
+| Industria por sector (IPI manufacturero) | INDEC | mensual | sep 2026 | 10/12/2026 | Automática |
 | Balance de pagos, posición internacional, subocupación e informalidad | INDEC vía datos.gob.ar | trimestral | 2.º trim. 2026 | 08/01/2027 | Automática |
 | Demanda agregada y PIB | INDEC vía datos.gob.ar | trimestral | 2.º trim. 2026 | 08/01/2027 | Automática |
 | Deuda: ratios y vencimientos | Secretaría de Finanzas | trimestral | 2.º trim. 2026 | 08/01/2027 | Automática |
-| Industria y construcción por sector (IPI) | INDEC | mensual | ago 2026 | 10/11/2026 | Pendiente: sin descarga automática |
 | Comercio exterior | INDEC | mensual | sep 2026 | 20/11/2026 | Pendiente: sin descarga automática |
 | Consumo por rubros | INDEC | mensual | ago 2026 | 25/11/2026 | Pendiente: sin descarga automática |
 | Recaudación | ARCA | mensual | oct 2026 | 03/12/2026 | Pendiente: sin descarga automática |
