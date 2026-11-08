@@ -65,7 +65,7 @@ PERMITIDO = {
     "inv_mensual": {(m, c) for m in ("2026-08", "2026-09") for c in ("impo", "ar_efec", "ar_efec_12m")},
     "comercio_anual": {("2026", c) for c in ("expo", "impo", "saldo", "cobertura", "meses", "periodo")},
     "ultimos": {(k, c) for k in ("saldo_m", "saldo_12m", "expo_12m", "impo_12m", "cobertura") for c in ("valor", "periodo", "periodo_txt", "variacion")} | {(k, c) for k in ("reservas", "tc", "infl_m", "infl_ia", "rem_12m", "tasa_real", "brecha_ccl", "riesgo") for c in ("valor", "periodo", "periodo_txt", "variacion", "variacion_txt")}
-    | {(k, c) for k in ("sal_real", "emae") for c in ("valor", "periodo", "periodo_txt", "variacion", "estado")},
+    | {(k, c) for k in ("sal_real", "emae", "recaud_real", "presion") for c in ("valor", "periodo", "periodo_txt", "variacion", "estado")},
 }
 COLUMNAS_LIBRES = {"mensual": {"tc_pesos_hoy", "tasa_real_personales", "tasa_real_personales_exante", "itcrm", "itcrb_bra", "itcrb_usa", "itcrb_chn", "itcrb_eur"}}
 control("conserva las tablas de la v1 y suma las nuevas", set(nuevo) - set(base) == {"deuda_perfil", "deuda_resumen", "curva_pesos", "sostenibilidad", "calendario_datos", "diario"} and set(base) <= set(nuevo))
@@ -197,7 +197,7 @@ dif = {m: abs(num(fm[m]["fis_superavit_pib"]) - v) for m, v in prim_v1.items()}
 peor = max(dif, key=dif.get)
 control("superávit primario = resultado primario de la v1", dif[peor] <= 0.02, f"dif máx {dif[peor]:.3f} pp en {peor}; jun 2026: {fm['2026-06']['fis_superavit_pib']} vs {prim_v1['2026-06']}")
 cal_d = tabla(nuevo, "calendario_datos")
-control("calendario completo", len(cal_d) == 25 and sum(x["estado"] == "Automática" for x in cal_d) == 20, str(len(cal_d)))
+control("calendario completo", len(cal_d) == 25 and sum(x["estado"] == "Automática" for x in cal_d) == 21, str(len(cal_d)))
 control("resultado financiero 2025 plausible", -1 < num(M["2025-12"]["fis_financiero_pib"]) < 1, M["2025-12"]["fis_financiero_pib"])
 control("ingresos / PIB plausibles", all(10 < num(x["fis_ingresos_pib"]) < 30 for x in fm.values()), M["2025-12"]["fis_ingresos_pib"])
 
@@ -305,6 +305,21 @@ mal = [(m, p) for m in nuevos for p, n in (("sp", 11), ("my", 10), ("sh", 10)) i
 control("consumo: los rubros suman el total en los meses nuevos", not mal, str(mal))
 ult = max(Cb)
 control("consumo: la v1 y INDEC coinciden en el último mes común", all(cerca(num(Cb[ult][c]), num(cf[ult][c]), 1) for c in ("sp00", "my00", "sh00", "sp_real", "my_real")), ult)
+
+# Recaudación: los meses nuevos salen de ARCA y las fórmulas reproducen la v1.
+rf = {x["mes"]: x for x in fuente("recaudacion_mensual.csv")}
+In = {r["mes"]: r for r in tabla(nuevo, "inv_mensual")}
+Ib = {r["mes"]: r for r in tabla(base, "inv_mensual")}
+nuevos = [m for m in In if not (Ib.get(m, {}).get("der_imp"))]
+mal = [m for m in nuevos if In[m]["der_imp"] and not (cerca(num(In[m]["der_imp"]), num(rf[m]["der_imp"]), 0.01) and cerca(num(In[m]["der_exp"]), num(rf[m]["der_exp"]), 0.01))]
+control("recaudación: derechos nuevos iguales a ARCA", not mal, f"nuevos={nuevos}; {mal[:3]}")
+comunes = [m for m in rf if Ib.get(m, {}).get("der_imp")]
+mal = [m for m in comunes if not (cerca(num(Ib[m]["der_imp"]), num(rf[m]["der_imp"]), 1) and cerca(num(Ib[m]["der_exp"]), num(rf[m]["der_exp"]), 1))]
+control("recaudación: ARCA reproduce los derechos de la v1", not mal, f"{len(comunes)} meses; {mal[:3]}")
+tr = {m: num(x["tributarios"]) for m, x in rf.items()}
+dif = {m: abs((tr[m] / tr[mover(m, -12)] / (num(Mb[m]["ipc_index"]) / num(Mb[mover(m, -12)]["ipc_index"])) - 1) * 100 - num(Mb[m]["recaudacion_real_ia"]))
+       for m in rf if mover(m, -12) in tr and num(Mb.get(m, {}).get("recaudacion_real_ia")) is not None}
+control("recaudación real: la fórmula reproduce la v1", dif and max(dif.values()) < 0.1, f"{len(dif)} meses; dif máx {max(dif.values()):.3f} pp")
 
 # 8. Página.
 html = (RAIZ / "index.html").read_text(encoding="utf-8")

@@ -762,9 +762,48 @@ def d_consumo():
     guardar("consumo_rubros.csv", cols, [{c: filas[m].get(c, "") for c in cols} for m in sorted(filas)])
 
 
+# Recaudación (ARCA): una planilla por año, con una columna por mes.
+ARCA_SERIE = "https://contenidos.afip.gob.ar/institucional/estudios/archivos/serie{anio}.xls"
+FILAS_ARCA = {"total": "TOTAL GENERAL", "tributarios": "RECURSOS  TRIBUTARIOS", "der_exp": "Derechos a la exportación", "der_imp_derechos": "Derechos a la importación",
+              "der_imp_estadistica": "Estadística", "der_imp_convergencia": "Factor de convergencia"}
+
+
+def d_recaudacion():
+    filas = []
+    hoy = dt.date.today()
+    for anio in (hoy.year - 1, hoy.year):
+        try:
+            h = xls(bajar(ARCA_SERIE.format(anio=anio))).sheet_by_index(0)
+        except Exception as e:
+            if anio == hoy.year and hoy.month <= 2:
+                print(f"AVISO: ARCA todavía no publicó la serie {anio}: {e}")  # en enero la planilla del año aún no existe
+                continue
+            raise
+        if str(anio) not in str(h.cell_value(1, 1)):
+            sys.exit(f"ARCA: la planilla {anio} dice «{h.cell_value(1, 1)}»")
+        meses = {c: MESES_LARGOS.get(str(h.cell_value(4, c)).strip().lower()) for c in range(2, h.ncols)}
+        meses = {c: m for c, m in meses.items() if m}
+        rotulos = {}
+        for r in range(h.nrows):
+            t = " ".join(str(h.cell_value(r, 1)).split()).lower()
+            for k, rot in FILAS_ARCA.items():
+                if k not in rotulos and t.startswith(" ".join(rot.split()).lower()):
+                    rotulos[k] = r
+        if set(rotulos) != set(FILAS_ARCA):
+            sys.exit(f"ARCA {anio}: faltan filas {set(FILAS_ARCA) - set(rotulos)}")
+        for c, m in sorted(meses.items()):
+            v = {k: h.cell_value(r, c) for k, r in rotulos.items()}
+            if not isinstance(v["tributarios"], float):
+                continue
+            filas.append({"mes": f"{anio}-{m:02d}", "total": round(v["total"], 2), "tributarios": round(v["tributarios"], 2), "der_exp": round(v["der_exp"], 2),
+                          # Como en la v1: derechos de importación + tasa de estadística + factor de convergencia.
+                          "der_imp": round(sum(v[k] if isinstance(v[k], float) else 0 for k in ("der_imp_derechos", "der_imp_estadistica", "der_imp_convergencia")), 2)})
+    guardar_preservando("recaudacion_mensual.csv", ["mes", "total", "tributarios", "der_imp", "der_exp"], filas)
+
+
 FUENTES_POR_ID = {"diario": d_diario, "mercado": d_mercado, "precios": d_precios, "curva": d_curva, "bcra": d_bcra, "credito": d_credito, "itcrm": d_itcrm, "global": d_global, "deuda_mensual": d_deuda_mensual, "fiscal": d_fiscal,
                   "series_mensuales": d_series_mensuales, "actividad": d_actividad, "series_trimestrales": d_series_trimestrales, "demanda": d_demanda, "deuda_trim": d_deuda_trim,
-                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio, "consumo": d_consumo}
+                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio, "consumo": d_consumo, "recaudacion": d_recaudacion}
 
 
 def main():

@@ -278,7 +278,7 @@ def pib_nominal(inv):
 def extender_filas(obj):
     """Suma filas para los períodos nuevos. Las series que no tienen ese dato quedan vacías."""
     meses = set()
-    for archivo in ("deuda_mensual.csv", "bcra_mensual.csv", "series_mensuales.csv", "fiscal_mensual.csv", "actividad_mensual.csv", "global_mensual.csv", "credito_mensual.csv", "itcrm_mensual.csv", "mercado_mensual.csv", "precios_mensual.csv", "emae_mensual.csv", "salarios_mensual.csv", "ipi_mensual.csv", "comercio_mensual.csv"):
+    for archivo in ("deuda_mensual.csv", "bcra_mensual.csv", "series_mensuales.csv", "fiscal_mensual.csv", "actividad_mensual.csv", "global_mensual.csv", "credito_mensual.csv", "itcrm_mensual.csv", "mercado_mensual.csv", "precios_mensual.csv", "emae_mensual.csv", "salarios_mensual.csv", "ipi_mensual.csv", "comercio_mensual.csv", "recaudacion_mensual.csv"):
         meses |= {r["mes"] for r in leer_fuente(archivo)[1]}
     cols, filas = leer_tabla(obj["mensual"])
     ultimo = filas[-1]["mes"]
@@ -500,6 +500,85 @@ def aplicar_consumo(obj):
             if v is not None:
                 r[c] = fmt(v, 3)
     obj["consumo_rubros"] = escribir_tabla(cols, filas)
+
+
+def pib_12m(obj, mes):
+    """PIB nominal de los 12 meses que terminan en mes, interpolado entre cierres de trimestre (pib_n está anualizado)."""
+    _, inv = leer_tabla(obj["inv_trim"])
+    pib = pib_nominal(inv)
+
+    def pib_4t(m):
+        y, q = int(m[:4]), (int(m[5:]) + 2) // 3
+        valores = []
+        for _ in range(4):
+            valores.append(pib.get(f"{y}-T{q}"))
+            q -= 1
+            if q == 0:
+                y, q = y - 1, 4
+        return None if None in valores else sum(valores) / 4
+
+    resto = (int(mes[5:]) - 1) % 3
+    fin = pib_4t(mes)
+    if resto == 2 or fin is None:
+        return fin
+    inicio = pib_4t(mover_mes(mes, -(resto + 1)))
+    return None if inicio is None else inicio + (fin - inicio) * (resto + 1) / 3
+
+
+def aplicar_recaudacion(obj):
+    """Recaudación de ARCA: derechos de comercio, recaudación real y presión tributaria en los meses posteriores a la v1."""
+    R = {f["mes"]: f for f in leer_fuente("recaudacion_mensual.csv")[1]}
+    trib = {m: num(f["tributarios"]) for m, f in R.items()}
+    cols, filas = leer_tabla(obj["mensual"])
+    M = {r["mes"]: r for r in filas}
+    desde = {c: ultimo_con(M, c) for c in ("recaudacion_real_ia", "presion_trib_12m")}
+    for mes in sorted(R):
+        r, previo = M.get(mes), M.get(mover_mes(mes, -12))
+        if r is None:
+            continue
+        if mes > desde["recaudacion_real_ia"] and previo and trib.get(mover_mes(mes, -12)) and num(r["ipc_index"]) and num(previo["ipc_index"]):
+            r["recaudacion_real_ia"] = fmt((trib[mes] / trib[mover_mes(mes, -12)] / (num(r["ipc_index"]) / num(previo["ipc_index"])) - 1) * 100, 6)
+        s12, pib = suma_12m(trib, mes), pib_12m(obj, mes)
+        if mes > desde["presion_trib_12m"] and s12 and pib:
+            r["presion_trib_12m"] = fmt(s12 / pib * 100, 4)
+    obj["mensual"] = escribir_tabla(cols, filas)
+    # Derechos de importación y exportación, con el tipo de cambio del mes para la alícuota efectiva.
+    icols, ifilas = leer_tabla(obj["inv_mensual"])
+    D = {r["mes"]: r for r in ifilas}
+    desde = {c: ultimo_con(D, c) for c in ("der_imp", "der_exp")}
+    for mes in sorted(m for m in R if m > ifilas[-1]["mes"]):
+        D[mes] = {**{c: "" for c in icols}, "mes": mes}
+        ifilas.append(D[mes])
+    for mes, f in R.items():
+        r = D.get(mes)
+        if r is None:
+            continue
+        for c in ("der_imp", "der_exp"):
+            if mes > desde[c] and num(f[c]) is not None:
+                r[c] = fmt(num(f[c]), 2)
+        if r["tc"] == "" and num(M.get(mes, {}).get("tc_a3500")):
+            r["tc"] = fmt(num(M[mes]["tc_a3500"]), 1)
+    obj["inv_mensual"] = escribir_tabla(icols, ifilas)
+
+
+def actualizar_kpi_recaudacion(obj):
+    cols, filas = leer_tabla(obj["ultimos"])
+    _, mf = leer_tabla(obj["mensual"])
+    M = {r["mes"]: r for r in mf}
+    for r in filas:
+        col = {"recaud_real": "recaudacion_real_ia", "presion": "presion_trib_12m"}.get(r["id"])
+        if not col:
+            continue
+        m = ultimo_con(M, col)
+        if m <= r["periodo"]:
+            continue
+        a = num(M[m][col])
+        r.update(valor=fmt(a, 2), periodo=m, periodo_txt=f"{MESES[int(m[5:]) - 1]} {m[:4]}")
+        if col == "recaudacion_real_ia":
+            r["estado"] = "bueno" if a > 0 else "malo"
+        elif num(M.get(mover_mes(m, -12), {}).get(col)) is not None:
+            r["variacion"] = fmt(a - num(M[mover_mes(m, -12)][col]), 2)
+    obj["ultimos"] = escribir_tabla(cols, filas)
 
 
 def actualizar_kpi_indec(obj):
@@ -987,6 +1066,7 @@ def main():
     quitar_s68(obj)
     aplicar_indec_sectores(obj)
     aplicar_comercio(obj)
+    aplicar_recaudacion(obj)
     M = actualizar_mensual(obj)
     actualizar_inv_mensual(obj, M)
     actualizar_comercio_anual(obj, M)
@@ -999,6 +1079,7 @@ def main():
     agregar_etapa3(obj)
     actualizar_kpi_mercado(obj)
     actualizar_kpi_indec(obj)
+    actualizar_kpi_recaudacion(obj)
     obj["diario"] = escribir_tabla(*leer_fuente("diario.csv"))
     tabla_calendario(obj)
     SALIDA.write_text(ini + json.dumps(obj, ensure_ascii=False) + fin, encoding="utf-8", newline="\n")
