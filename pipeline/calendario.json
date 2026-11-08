@@ -57,8 +57,9 @@
     "rezago": 1
    },
    "salidas": {
-    "mensual": "^(infl_|rem_12m|ipc_index|tc_real_index|tc_pesos_hoy|tasa_real|recaudacion_real_ia$|sal_(priv_|pub_)?real$|smvm_real$|jub_real$|prestamos_real_ia$)",
-    "consumo_rubros": "^ipc$"
+    "mensual": "^(infl_|rem_12m|ipc_index|tc_real_index|tc_pesos_hoy|tasa_real|recaudacion_real_ia$|sal_(priv_|pub_)?real$|smvm_real$|jub_real$|prestamos_real_ia$|sal_noreg_real$|base_real$)",
+    "consumo_rubros": "^ipc$",
+    "trimestral": "^infl_ia$"
    }
   },
   {
@@ -73,7 +74,7 @@
     "rezago": 1
    },
    "salidas": {
-    "mensual": "^(res_|base_monetaria|dep_usd|prest_usd|pases|leliq|lebac|pasivos|tc_ref|reservas_ult|pagos_me_reservas)",
+    "mensual": "^(res_|base_monetaria|dep_usd|prest_usd|pases|leliq|lebac|pasivos|tc_ref|reservas_ult|pagos_me_reservas|base_real$)",
     "trimestral": "^compras_12m_t"
    }
   },
@@ -208,8 +209,8 @@
     "rezago_dias": 100
    },
    "salidas": {
-    "trimestral": "^(d_|ct_|p_expo|q_expo|cc_pib_4t|pib_ia$)",
-    "mensual": "^(fis_|fg_|credito_pib|presion_trib_12m)",
+    "trimestral": "^(d_|ct_|p_expo|q_expo|cc_pib_4t|pib_ia$|terminos_intercambio$)",
+    "mensual": "^(fis_|fg_|credito_pib|presion_trib_12m|rec_)",
     "inv_trim": "^(pib_|ibif_pib)"
    }
   },
@@ -331,7 +332,7 @@
     "rezago": 1
    },
    "salidas": {
-    "mensual": "^(recaudacion_real_ia|presion_trib_12m)$",
+    "mensual": "^(recaudacion_real_ia|presion_trib_12m|rec_)",
     "inv_mensual": "^(der_|tc$|ar_efec)"
    }
   },
@@ -440,6 +441,39 @@
    },
    "salidas": {
     "consumo_fisico": ".*"
+   }
+  },
+  {
+   "id": "ipc_aperturas",
+   "nombre": "Inflación por categoría, división y región, y mayoristas",
+   "origen": "INDEC",
+   "frecuencia": "mensual",
+   "archivo": "ipc_aperturas.csv",
+   "columna_clave": "nucleo",
+   "regla": {
+    "tipo": "mensual",
+    "dia": 16,
+    "rezago": 1
+   },
+   "salidas": {
+    "mensual": "^(infl_nucleo|infl_regulados|infl_estacionales|regulados_vs_nucleo|ipim_ia|ipc_)"
+   }
+  },
+  {
+   "id": "confianza",
+   "nombre": "Confianza en el Gobierno y del consumidor",
+   "origen": "UTDT vía datos.gob.ar",
+   "frecuencia": "mensual",
+   "archivo": "confianza_mensual.csv",
+   "columna_clave": "icg",
+   "regla": {
+    "tipo": "mensual",
+    "dia": 25,
+    "rezago": 1
+   },
+   "salidas": {
+    "mensual": "^(icg|icc)$",
+    "trimestral": "^icg$"
    }
   }
  ],

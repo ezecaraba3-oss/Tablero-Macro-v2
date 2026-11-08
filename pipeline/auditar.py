@@ -66,9 +66,9 @@ PERMITIDO = {
     "inv_mensual": {(m, c) for m in ("2026-08", "2026-09") for c in ("impo", "ar_efec", "ar_efec_12m")},
     "comercio_anual": {("2026", c) for c in ("expo", "impo", "saldo", "cobertura", "meses", "periodo")},
     "ultimos": {(k, c) for k in ("saldo_m", "saldo_12m", "expo_12m", "impo_12m", "cobertura") for c in ("valor", "periodo", "periodo_txt", "variacion")} | {(k, c) for k in ("reservas", "tc", "infl_m", "infl_ia", "rem_12m", "tasa_real", "brecha_ccl", "riesgo") for c in ("valor", "periodo", "periodo_txt", "variacion", "variacion_txt")}
-    | {(k, c) for k in ("sal_real", "emae", "recaud_real", "presion", "desempleo") for c in ("valor", "periodo", "periodo_txt", "variacion", "estado")},
+    | {(k, c) for k in ("sal_real", "emae", "recaud_real", "presion", "desempleo", "icg") for c in ("valor", "periodo", "periodo_txt", "variacion", "estado")},
 }
-COLUMNAS_LIBRES = {"mensual": {"tc_pesos_hoy", "tasa_real_personales", "tasa_real_personales_exante", "itcrm", "itcrb_bra", "itcrb_usa", "itcrb_chn", "itcrb_eur"}}
+COLUMNAS_LIBRES = {"mensual": {"base_real", "tc_pesos_hoy", "tasa_real_personales", "tasa_real_personales_exante", "itcrm", "itcrb_bra", "itcrb_usa", "itcrb_chn", "itcrb_eur"}}
 control("conserva las tablas de la v1 y suma las nuevas", set(nuevo) - set(base) == {"deuda_perfil", "deuda_resumen", "curva_pesos", "sostenibilidad", "calendario_datos", "diario"} and set(base) <= set(nuevo))
 inesperados = []
 total = 0
@@ -200,7 +200,7 @@ dif = {m: abs(num(fm[m]["fis_superavit_pib"]) - v) for m, v in prim_v1.items()}
 peor = max(dif, key=dif.get)
 control("superávit primario = resultado primario de la v1", dif[peor] <= 0.02, f"dif máx {dif[peor]:.3f} pp en {peor}; jun 2026: {fm['2026-06']['fis_superavit_pib']} vs {prim_v1['2026-06']}")
 cal_d = tabla(nuevo, "calendario_datos")
-control("calendario completo", len(cal_d) == 30 and sum(x["estado"] == "Automática" for x in cal_d) == 28, str(len(cal_d)))
+control("calendario completo", len(cal_d) == 32 and sum(x["estado"] == "Automática" for x in cal_d) == 30, str(len(cal_d)))
 control("resultado financiero 2025 plausible", -1 < num(M["2025-12"]["fis_financiero_pib"]) < 1, M["2025-12"]["fis_financiero_pib"])
 control("ingresos / PIB plausibles", all(10 < num(x["fis_ingresos_pib"]) < 30 for x in fm.values()), M["2025-12"]["fis_ingresos_pib"])
 
@@ -395,6 +395,25 @@ control("consumo físico: las fuentes reproducen la v1 (2024-2026, error menor a
 nuevos = [(m, c) for m in Fn for c in Fn[m] if c != "mes" and Fn[m][c] != "" and not (Fb.get(m, {}).get(c))]
 mal = [(m, c) for m, c in nuevos if not cerca(num(Fn[m][c]), num(ff[m][c]), 0.001)]
 control("consumo físico: datos nuevos iguales a la fuente", not mal, f"{len(nuevos)} celdas nuevas; {mal[:3]}")
+
+# IPC por apertura, mayoristas, confianza, recaudación por impuesto.
+ap = {x["mes"]: x for x in fuente("ipc_aperturas.csv")}
+def _ia(c, m):
+    a = mover(m, -12)
+    return (num(ap[m][c]) / num(ap[a][c]) - 1) * 100 if m in ap and a in ap and num(ap[m][c]) and num(ap[a][c]) else None
+peor = {}
+for col, k in (("infl_nucleo_ia", "nucleo"), ("infl_regulados_ia", "regulados"), ("infl_estacionales_ia", "estacionales"), ("ipim_ia", "ipim")):
+    d = [abs(_ia(k, m) - num(Mb[m][col])) for m in Mb if num(Mb[m].get(col)) is not None and _ia(k, m) is not None]
+    peor[col] = max(d) if d else 9
+control("IPC por categoría y mayoristas: INDEC reproduce la v1", max(peor.values()) < 0.03, str({k: round(v, 3) for k, v in peor.items()}))
+cf = {x["mes"]: x for x in fuente("confianza_mensual.csv")}
+d = [abs(num(cf[m][c]) - num(Mb[m][c])) for m in cf for c in ("icg", "icc") if num(Mb.get(m, {}).get(c)) is not None and num(cf[m][c]) is not None]
+control("confianza: UTDT reproduce la v1", d and max(d) < 0.001, f"{len(d)} datos")
+mal = [m for m, x in M.items() if x.get("rec_iva_pib") and num(x["presion_trib_12m"]) is not None
+       and not (0 < num(x["rec_iva_pib"]) < num(x["presion_trib_12m"]) and 0 < num(x["rec_segsoc_pib"]) < num(x["presion_trib_12m"]))]
+control("recaudación por impuesto: IVA y seguridad social positivos y menores que el total", not mal, str(mal[:4]))
+control("recaudación por impuesto desde 2016", min(m for m, x in M.items() if x.get("rec_iva_pib")) <= "2016-12")
+
 
 # 8. Página.
 html = (RAIZ / "index.html").read_text(encoding="utf-8")

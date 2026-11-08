@@ -20,7 +20,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import calendario as cal  # noqa: E402
+from descargar import DIVISIONES_IPC as DIVISIONES  # noqa: E402
 
+REGIONES = ("gba", "pampeana", "noreste", "noroeste", "cuyo", "patagonia")
 RAIZ = Path(__file__).resolve().parent.parent
 BASE = RAIZ / "pipeline" / "base" / "datos_v1.js"
 ITCRM_CSV = RAIZ / "pipeline" / "fuentes" / "itcrm_mensual.csv"
@@ -807,6 +809,98 @@ def aplicar_consumo_fisico(obj):
     obj["consumo_fisico"] = escribir_tabla(cols, filas)
 
 
+IMPUESTOS = ("iva", "ganancias", "segsoc", "der_exp", "der_imp", "cheque", "combustibles")
+
+
+def aplicar_precios_y_confianza(obj):
+    """Aperturas del IPC, mayoristas, confianza (UTDT), base monetaria real y recaudación por impuesto."""
+    cols, filas = leer_tabla(obj["mensual"])
+    M = {r["mes"]: r for r in filas}
+    A = {f["mes"]: f for f in leer_fuente("ipc_aperturas.csv")[1]}
+    idx = {c: {m: num(f[c]) for m, f in A.items() if num(f.get(c)) is not None} for c in (list(A[next(iter(A))]) if A else []) if c != "mes"}
+
+    def ia(serie, m):
+        a = mover_mes(m, -12)
+        return (serie[m] / serie[a] - 1) * 100 if m in serie and a in serie else None
+
+    # Columnas de la v1: solo meses posteriores a su último dato.
+    desde = {c: ultimo_con(M, c) for c in ("infl_nucleo_ia", "infl_regulados_ia", "infl_estacionales_ia", "regulados_vs_nucleo", "ipim_ia", "icg", "icc")}
+    ref = idx["regulados"]["2017-01"] / idx["nucleo"]["2017-01"]
+    conf = {f["mes"]: f for f in leer_fuente("confianza_mensual.csv")[1]}
+    nuevas = ["ipc_bienes_ia", "ipc_servicios_ia", *[f"ipc_{v}_ia" for v in DIVISIONES.values()], *[f"ipc_{v}_ia" for v in REGIONES]]
+    nuevas += [f"rec_{k}_pib" for k in IMPUESTOS] + ["sal_noreg_real", "sal_noreg_ia"]
+    cols += [c for c in nuevas if c not in cols]
+    for mes, r in M.items():
+        for c, k in (("infl_nucleo_ia", "nucleo"), ("infl_regulados_ia", "regulados"), ("infl_estacionales_ia", "estacionales"), ("ipim_ia", "ipim")):
+            v = ia(idx[k], mes)
+            if mes > desde[c] and v is not None:
+                r[c] = fmt(v, 4)
+        if mes > desde["regulados_vs_nucleo"] and mes in idx["regulados"] and mes in idx["nucleo"]:
+            r["regulados_vs_nucleo"] = fmt(idx["regulados"][mes] / idx["nucleo"][mes] / ref * 100, 3)
+        for c in ("icg", "icc"):
+            if mes > desde[c] and num(conf.get(mes, {}).get(c)) is not None:
+                r[c] = fmt(num(conf[mes][c]), 3)
+        for c, k in [("ipc_bienes_ia", "bienes"), ("ipc_servicios_ia", "servicios")] + [(f"ipc_{v}_ia", "d" + k2) for k2, v in DIVISIONES.items()] + [(f"ipc_{v}_ia", "r_" + v) for v in REGIONES]:
+            v = ia(idx[k], mes)
+            r[c] = fmt(v, 2) if v is not None else ""
+    # Base monetaria real, en pesos del último mes con IPC (se recalcula entera cada mes, como el dólar a pesos de hoy).
+    ultimo_ipc = max(m for m, r in M.items() if num(r["ipc_index"]))
+    for mes, r in M.items():
+        b, i = num(r["base_monetaria"]), num(r["ipc_index"])
+        r["base_real"] = fmt(b * num(M[ultimo_ipc]["ipc_index"]) / i, 0) if b and i else ""
+    # Salario del sector no registrado: real, enero de 2017 = 100, como el resto del gráfico.
+    sal = {f["mes"]: num(f["is_no_reg"]) for f in leer_fuente("salarios_mensual.csv")[1] if num(f["is_no_reg"])}
+    if "2017-01" in sal:
+        k = 100 / (sal["2017-01"] / num(M["2017-01"]["ipc_index"]))
+        for mes, r in M.items():
+            i = num(r["ipc_index"])
+            r["sal_noreg_real"] = fmt(sal[mes] / i * k, 4) if mes in sal and i else ""
+            a = mover_mes(mes, -12)
+            r["sal_noreg_ia"] = fmt((sal[mes] / sal[a] - 1) * 100, 4) if mes in sal and a in sal else ""
+    # Recaudación por impuesto: 12 meses sobre el PIB nominal de esos 12 meses (mismo método que la presión tributaria).
+    # No se calcula un «resto»: ARCA arma los recursos tributarios netos de conceptos incluidos en los componentes.
+    R = {f["mes"]: f for f in leer_fuente("recaudacion_mensual.csv")[1]}
+    ser = {k: {m: num(f.get(k)) for m, f in R.items() if num(f.get(k)) is not None} for k in (*IMPUESTOS, "tributarios")}
+    for mes, r in M.items():
+        pib = pib_12m(obj, mes)
+        s12 = {k: suma_12m(ser[k], mes) for k in ser}
+        ok = pib and all(v is not None for v in s12.values())
+        for k in IMPUESTOS:
+            r[f"rec_{k}_pib"] = fmt(s12[k] / pib * 100, 3) if ok else ""
+    for r in filas:
+        for c in cols:
+            r.setdefault(c, "")
+    obj["mensual"] = escribir_tabla(cols, filas)
+    # Trimestral: confianza e inflación como promedio de los tres meses; términos del intercambio de INDEC.
+    tcols, tfilas = leer_tabla(obj["trimestral"])
+    T = {r["trimestre"]: r for r in tfilas if "-T" in r["trimestre"]}
+    D = {f["trimestre"]: f for f in leer_fuente("demanda_trimestral.csv")[1]}
+    desde = {c: ultimo_con(T, c) for c in ("icg", "infl_ia", "terminos_intercambio")}
+    for t, r in T.items():
+        meses = [mover_mes(r["trim_inicio"], i) for i in range(3)]
+        for c in ("icg", "infl_ia"):
+            v = [num(M.get(m, {}).get(c)) for m in meses]
+            if t > desde[c] and None not in v:
+                r[c] = fmt(sum(v) / 3, 3)
+        if t > desde["terminos_intercambio"] and num(D.get(t, {}).get("ti")) is not None:
+            r["terminos_intercambio"] = fmt(num(D[t]["ti"]), 3)
+    obj["trimestral"] = escribir_tabla(tcols, tfilas)
+
+
+def actualizar_kpi_confianza(obj):
+    cols, filas = leer_tabla(obj["ultimos"])
+    _, mf = leer_tabla(obj["mensual"])
+    M = {r["mes"]: r for r in mf}
+    m = ultimo_con(M, "icg")
+    for r in filas:
+        if r["id"] == "icg" and m > r["periodo"]:
+            a, b = num(M[m]["icg"]), num(M.get(mover_mes(m, -12), {}).get("icg"))
+            var = None if b is None else a - b
+            r.update(valor=fmt(a, 2), periodo=m, periodo_txt=f"{MESES[int(m[5:]) - 1]} {m[:4]}", variacion=fmt(var, 2) if var is not None else "",
+                     estado="bueno" if (var or 0) > 0 else "malo")
+    obj["ultimos"] = escribir_tabla(cols, filas)
+
+
 def actualizar_kpi_indec(obj):
     cols, filas = leer_tabla(obj["ultimos"])
     _, mf = leer_tabla(obj["mensual"])
@@ -1310,11 +1404,13 @@ def main():
     agregar_tablas_e2(obj)
     agregar_ultimos_e2(obj)
     agregar_etapa3(obj)
+    aplicar_precios_y_confianza(obj)
     actualizar_kpi_mercado(obj)
     actualizar_kpi_indec(obj)
     actualizar_kpi_recaudacion(obj)
     actualizar_kpi_eph(obj)
     actualizar_carrera(obj)
+    actualizar_kpi_confianza(obj)
     obj["diario"] = escribir_tabla(*leer_fuente("diario.csv"))
     tabla_calendario(obj)
     SALIDA.write_text(ini + json.dumps(obj, ensure_ascii=False) + fin, encoding="utf-8", newline="\n")

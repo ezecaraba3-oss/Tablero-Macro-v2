@@ -8,6 +8,7 @@ Generado el 08/11/2026 con `pipeline/actualizar.py`. Las reglas están en `pipel
 | Último dato diario: dólares, riesgo país, reservas y tasas | BCRA y ArgentinaDatos | diaria, a las 18:00 | 06/11/2026 | 09/11/2026 | Automática |
 | Inflación y expectativas | INDEC y REM vía BCRA | mensual | sep 2026 | 16/11/2026 | Automática |
 | Canasta básica, salario mínimo y jubilación mínima | INDEC y datos.gob.ar | mensual | sep 2026 | 16/11/2026 | Automática |
+| Inflación por categoría, división y región, y mayoristas | INDEC | mensual | sep 2026 | 16/11/2026 | Automática |
 | Contexto global: granos, Brent, EE. UU. y Brasil | FRED y Banco Central de Brasil | mensual | ago 2026 | 20/11/2026 | Automática |
 | Comercio exterior: totales, rubros y socios | INDEC | mensual | sep 2026 | 20/11/2026 | Automática |
 | Consumo físico: electricidad, gas, combustibles, autos, cemento y faena | CAMMESA, Secretaría de Energía, INDEC y Agricultura vía datos.gob.ar | mensual | sep 2026 | 20/11/2026 | Automática |
@@ -18,6 +19,7 @@ Generado el 08/11/2026 con `pipeline/actualizar.py`. Las reglas están en `pipel
 | Salarios | INDEC | mensual | ago 2026 | 25/11/2026 | Automática |
 | Consumo por rubros: supermercados, mayoristas y shoppings | INDEC | mensual | ago 2026 | 25/11/2026 | Automática |
 | Préstamos en pesos al sector privado (reales) | BCRA vía datos.gob.ar | mensual | ago 2026 | 25/11/2026 | Automática |
+| Confianza en el Gobierno y del consumidor | UTDT vía datos.gob.ar | mensual | sep 2026 | 25/11/2026 | Automática |
 | Deuda: stock, moneda, acreedor y pagos | Secretaría de Finanzas | mensual | sep 2026 | 28/11/2026 | Automática |
 | Dólar, tasas y riesgo país: cierre mensual | BCRA y ArgentinaDatos | diaria en origen, cierre mensual en el tablero | oct 2026 | 03/12/2026 | Automática |
 | BCRA: reservas, compras, dólares en bancos, pases | API del BCRA | diaria en origen, cierre mensual en el tablero | oct 2026 | 03/12/2026 | Automática |

@@ -262,7 +262,7 @@ def a_filas(series, clave):
 SERIES_DEMANDA = {
     "d_pib": "4.2_OGP_2004_T_17", "d_cons_priv": "4.2_MGCP_2004_T_25", "d_cons_pub": "4.2_DGCP_2004_T_30", "d_ibif": "4.2_DGIT_2004_T_25",
     "d_expo": "4.2_DGE_2004_T_26", "d_impo": "4.2_OGI_2004_T_25", "d_existencias": "4.2_VE_2004_T_21", "pib_n": "4.4_OGP_2004_T_17",
-    "p_expo": "80.2_IIPENG_0_T_45", "q_expo": "80.2_IICENG_0_T_47",
+    "p_expo": "80.2_IIPENG_0_T_45", "q_expo": "80.2_IICENG_0_T_47", "ti": "82.2_ITI_2004_T_27",
 }
 SERIES_ACTIVIDAD = {
     "uci": "31.3_UNG_2004_M_18", "uci_metales": "31.3_UIMB_2004_M_33", "uci_quimicos": "31.3_USPQ_2004_M_34", "uci_textiles": "31.3_UPT_2004_M_23",
@@ -765,13 +765,15 @@ def d_consumo():
 # Recaudación (ARCA): una planilla por año, con una columna por mes.
 ARCA_SERIE = "https://contenidos.afip.gob.ar/institucional/estudios/archivos/serie{anio}.xls"
 FILAS_ARCA = {"total": "TOTAL GENERAL", "tributarios": "RECURSOS  TRIBUTARIOS", "der_exp": "Derechos a la exportación", "der_imp_derechos": "Derechos a la importación",
-              "der_imp_estadistica": "Estadística", "der_imp_convergencia": "Factor de convergencia"}
+              "der_imp_estadistica": "Estadística", "der_imp_convergencia": "Factor de convergencia", "iva": "IVA Neto de Devoluciones", "ganancias": "Ganancias",
+              "cheque": "Cuentas Corrientes", "combustibles": "Combustibles", "segsoc": "SEGURIDAD SOCIAL"}
+ARCA_DESDE = 2016
 
 
 def d_recaudacion():
     filas = []
     hoy = dt.date.today()
-    for anio in (hoy.year - 1, hoy.year):
+    for anio in range(ARCA_DESDE, hoy.year + 1):
         try:
             h = xls(bajar(ARCA_SERIE.format(anio=anio))).sheet_by_index(0)
         except Exception as e:
@@ -781,7 +783,9 @@ def d_recaudacion():
             raise
         if str(anio) not in str(h.cell_value(1, 1)):
             sys.exit(f"ARCA: la planilla {anio} dice «{h.cell_value(1, 1)}»")
-        meses = {c: MESES_LARGOS.get(str(h.cell_value(4, c)).strip().lower()) for c in range(2, h.ncols)}
+        # Hasta 2017 la planilla viene en miles de pesos; después, en millones.
+        escala = 1000 if "miles" in str(h.cell_value(2, 1)).lower() else 1
+        meses = {c: MES3.get(str(h.cell_value(4, c)).strip().lower()[:3]) for c in range(2, h.ncols)}
         meses = {c: m for c, m in meses.items() if m}
         rotulos = {}
         for r in range(h.nrows):
@@ -795,10 +799,12 @@ def d_recaudacion():
             v = {k: h.cell_value(r, c) for k, r in rotulos.items()}
             if not isinstance(v["tributarios"], float):
                 continue
+            v = {k: (x / escala if isinstance(x, float) else 0.0) for k, x in v.items()}
             filas.append({"mes": f"{anio}-{m:02d}", "total": round(v["total"], 2), "tributarios": round(v["tributarios"], 2), "der_exp": round(v["der_exp"], 2),
                           # Como en la v1: derechos de importación + tasa de estadística + factor de convergencia.
-                          "der_imp": round(sum(v[k] if isinstance(v[k], float) else 0 for k in ("der_imp_derechos", "der_imp_estadistica", "der_imp_convergencia")), 2)})
-    guardar_preservando("recaudacion_mensual.csv", ["mes", "total", "tributarios", "der_imp", "der_exp"], filas)
+                          "der_imp": round(v["der_imp_derechos"] + v["der_imp_estadistica"] + v["der_imp_convergencia"], 2),
+                          **{k: round(v[k], 2) for k in ("iva", "ganancias", "cheque", "combustibles", "segsoc")}})
+    guardar_preservando("recaudacion_mensual.csv", ["mes", "total", "tributarios", "der_imp", "der_exp", "iva", "ganancias", "cheque", "combustibles", "segsoc"], filas)
 
 
 # EPH: tasas trimestrales del total de aglomerados (la API las publica como proporción).
@@ -929,9 +935,51 @@ def d_consumo_fisico():
     guardar("consumo_fisico.csv", ["mes", *claves], a_filas({k: cerrados(d.get(k, {})) for k in claves}, "mes"))
 
 
+# IPC por categoría, división y región (INDEC) e índice de precios mayoristas (IPIM).
+DIVISIONES_IPC = {"01": "alimentos", "02": "alcohol_tabaco", "03": "prendas", "04": "vivienda", "05": "equipamiento", "06": "salud",
+                  "07": "transporte", "08": "comunicacion", "09": "recreacion", "10": "educacion", "11": "restaurantes", "12": "otros"}
+REGIONES_IPC = {"GBA": "gba", "Pampeana": "pampeana", "Noreste": "noreste", "Noroeste": "noroeste", "Cuyo": "cuyo", "Patagonia": "patagonia"}
+
+
+def d_ipc_aperturas():
+    filas = list(csv.DictReader(io.StringIO(bajar(f"{INDEC}/economia/serie_ipc_divisiones.csv").decode("latin-1")), delimiter=";"))
+    s = {}
+
+    def poner(clave, f):
+        if f["Indice_IPC"] not in ("", "NA"):
+            s.setdefault(clave, {})[f"{f['Periodo'][:4]}-{f['Periodo'][4:]}"] = float(f["Indice_IPC"].replace(",", "."))
+
+    for f in filas:
+        cod, reg = f["Codigo"].strip(), f["Region"].strip()
+        if reg == "Nacional":
+            if cod.startswith("N") and f["Clasificador"] == "Categorias":
+                poner("nucleo", f)
+            elif cod in ("Regulados", "Estacional"):
+                poner(cod.lower().replace("estacional", "estacionales"), f)
+            elif cod in ("B", "S"):
+                poner("bienes" if cod == "B" else "servicios", f)
+            elif cod in DIVISIONES_IPC:
+                poner("d" + cod, f)
+        elif cod == "0" and reg in REGIONES_IPC:
+            poner("r_" + REGIONES_IPC[reg], f)
+    faltan = {"nucleo", "regulados", "estacionales", "bienes", "servicios", *("d" + k for k in DIVISIONES_IPC), *("r_" + v for v in REGIONES_IPC.values())} - set(s)
+    if faltan:
+        sys.exit(f"IPC por apertura: faltan {sorted(faltan)}")
+    for f in csv.DictReader(io.StringIO(bajar(f"{INDEC}/economia/indice_ipim.csv").decode("latin-1")), delimiter=";"):
+        if f["nivel_general_aperturas"] == "ng_nivel_general":
+            s.setdefault("ipim", {})[f["periodo"][:7]] = float(f["indice_ipim"].replace(",", "."))
+    guardar("ipc_aperturas.csv", ["mes", *s], a_filas(s, "mes"))
+
+
+# Confianza en el Gobierno y del consumidor (UTDT vía datos.gob.ar).
+def d_confianza():
+    d = api({"icg": "370.3_ICG_NIVEL_RAL_0_0_17_94", "icc": "380.3_ICC_NACIONNAL_0_T_12"})
+    guardar("confianza_mensual.csv", ["mes", "icg", "icc"], a_filas(d, "mes"))
+
+
 FUENTES_POR_ID = {"diario": d_diario, "mercado": d_mercado, "precios": d_precios, "curva": d_curva, "bcra": d_bcra, "credito": d_credito, "itcrm": d_itcrm, "global": d_global, "deuda_mensual": d_deuda_mensual, "fiscal": d_fiscal,
                   "series_mensuales": d_series_mensuales, "actividad": d_actividad, "series_trimestrales": d_series_trimestrales, "demanda": d_demanda, "deuda_trim": d_deuda_trim,
-                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio, "consumo": d_consumo, "recaudacion": d_recaudacion, "eph": d_eph, "inversion": d_inversion, "m2": d_m2, "prestamos_pesos": d_prestamos_pesos, "haberes": d_haberes, "gini": d_gini, "consumo_fisico": d_consumo_fisico}
+                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio, "consumo": d_consumo, "recaudacion": d_recaudacion, "eph": d_eph, "inversion": d_inversion, "m2": d_m2, "prestamos_pesos": d_prestamos_pesos, "haberes": d_haberes, "gini": d_gini, "consumo_fisico": d_consumo_fisico, "ipc_aperturas": d_ipc_aperturas, "confianza": d_confianza}
 
 
 def main():
