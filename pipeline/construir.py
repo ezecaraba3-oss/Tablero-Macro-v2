@@ -769,6 +769,27 @@ def actualizar_carrera(obj):
     obj["carrera"] = escribir_tabla(cols, filas_carrera(series_carrera(obj)))
 
 
+def aplicar_gini(obj):
+    """Gini trimestral posterior a la v1; el semestral es el promedio de sus dos trimestres, como en la v1."""
+    G = {f["trimestre"]: num(f["gini"]) for f in leer_fuente("gini_trimestral.csv")[1]}
+    cols, filas = leer_tabla(obj["trimestral"])
+    T = {r["trimestre"]: r for r in filas if "-T" in r["trimestre"]}
+    desde = ultimo_con(T, "gini")
+    for t, g in G.items():
+        if t > desde and t in T and g is not None:
+            T[t]["gini"] = fmt(g, 3)
+    obj["trimestral"] = escribir_tabla(cols, filas)
+    scols, sfilas = leer_tabla(obj["semestral"])
+    for r in sfilas:
+        # Desde 2026: la v1 tenía el 1.er semestre con un solo trimestre.
+        if r["inicio"] >= "2026-01":
+            q = 1 if r["inicio"][5:] == "01" else 3
+            par = [G.get(f"{r['inicio'][:4]}-T{q}"), G.get(f"{r['inicio'][:4]}-T{q + 1}")]
+            if None not in par:
+                r["gini"] = fmt(sum(par) / 2, 3)
+    obj["semestral"] = escribir_tabla(scols, sfilas)
+
+
 def actualizar_kpi_indec(obj):
     cols, filas = leer_tabla(obj["ultimos"])
     _, mf = leer_tabla(obj["mensual"])
@@ -1260,6 +1281,7 @@ def main():
     aplicar_eph(obj)
     aplicar_inversion(obj)
     aplicar_dinero_y_haberes(obj)
+    aplicar_gini(obj)
     M = actualizar_mensual(obj)
     actualizar_inv_mensual(obj, M)
     actualizar_comercio_anual(obj, M)

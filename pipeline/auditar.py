@@ -61,6 +61,7 @@ PERMITIDO = {
     | {(m, c) for m in ("2017-01", "2017-02") for c in ("infl_mensual", "tasa_real_pf_m")}
     # Octubre de 2026 estaba incompleto en la v1: se reemplaza por el cierre del mes.
     | {("2026-10", c) for c in ("m2_priv_ia", "tc_a3500", "reservas", "badlar", "tasa_pf30", "tasa_personales", "banda_inf", "banda_sup", "dolar_blue", "dolar_ccl", "riesgo_pais", "tc_m", "tc_ia", "brecha_ccl", "brecha_mep", "brecha_blue", "tem_pf", "dist_techo", "dist_piso")},
+    "semestral": {("1S 2026", "gini")},  # la v1 lo tenía con un solo trimestre
     "comercio_rubros": {("2026-06", "x00"), ("2026-08", "x00"), ("2026-08", "x01")},
     "inv_mensual": {(m, c) for m in ("2026-08", "2026-09") for c in ("impo", "ar_efec", "ar_efec_12m")},
     "comercio_anual": {("2026", c) for c in ("expo", "impo", "saldo", "cobertura", "meses", "periodo")},
@@ -94,7 +95,7 @@ for n in base:
                 continue
             if rb.get(c) != ra.get(c):
                 total += 1
-                if not rb.get(c) and n in ("mensual", "inv_mensual") and rb[clave] >= "2025-10":
+                if not rb.get(c) and n in ("mensual", "inv_mensual", "trimestral") and rb[clave] >= "2025-10":
                     continue  # completar celdas vacías recientes no pisa datos de la v1
                 if (rb[clave], c) not in PERMITIDO.get(n, ()):
                     inesperados.append((n, rb[clave], c, rb.get(c), ra.get(c)))
@@ -199,7 +200,7 @@ dif = {m: abs(num(fm[m]["fis_superavit_pib"]) - v) for m, v in prim_v1.items()}
 peor = max(dif, key=dif.get)
 control("superávit primario = resultado primario de la v1", dif[peor] <= 0.02, f"dif máx {dif[peor]:.3f} pp en {peor}; jun 2026: {fm['2026-06']['fis_superavit_pib']} vs {prim_v1['2026-06']}")
 cal_d = tabla(nuevo, "calendario_datos")
-control("calendario completo", len(cal_d) == 28 and sum(x["estado"] == "Automática" for x in cal_d) == 26, str(len(cal_d)))
+control("calendario completo", len(cal_d) == 29 and sum(x["estado"] == "Automática" for x in cal_d) == 27, str(len(cal_d)))
 control("resultado financiero 2025 plausible", -1 < num(M["2025-12"]["fis_financiero_pib"]) < 1, M["2025-12"]["fis_financiero_pib"])
 control("ingresos / PIB plausibles", all(10 < num(x["fis_ingresos_pib"]) < 30 for x in fm.values()), M["2025-12"]["fis_ingresos_pib"])
 
@@ -369,6 +370,16 @@ control("préstamos reales: la serie reproduce la v1 desde 2018", dif and max(di
 m2_f = {x["mes"]: num(x["m2_priv_ia"]) for x in fuente("m2_mensual.csv")}
 mal = [m for m in m2_f if "2024-01" <= m < "2026-09" and num(Mb.get(m, {}).get("m2_priv_ia")) is not None and not cerca(m2_f[m], num(Mb[m]["m2_priv_ia"]), 0.15)]
 control("M2: el último dato del mes reproduce la v1", not mal, str(mal[:4]))
+
+# Gini.
+gf = {x["trimestre"]: num(x["gini"]) for x in fuente("gini_trimestral.csv")}
+# 2003-2006: la v1 usa otra versión de la serie (INDEC advierte sobre ese período).
+mal = [t for t in gf if t >= "2007" and num(Tb.get(t, {}).get("gini")) is not None and not cerca(gf[t], num(Tb[t]["gini"]), 0.0011)]
+control("Gini: INDEC reproduce la v1 desde 2007", not mal, str(mal[:5]))
+Sb = {r["semestre"]: r for r in tabla(base, "semestral")}
+mal = [k for k, r in Sb.items() if num(r["gini"]) is not None and r["inicio"] >= "2016-07" and r["inicio"] < "2026-01"
+       and not cerca((gf.get(f"{r['inicio'][:4]}-T{1 if r['inicio'][5:] == '01' else 3}", 9) + gf.get(f"{r['inicio'][:4]}-T{2 if r['inicio'][5:] == '01' else 4}", 9)) / 2, num(r["gini"]), 0.0011)]
+control("Gini semestral = promedio de sus trimestres (método de la v1)", not mal, str(mal[:5]))
 
 # 8. Página.
 html = (RAIZ / "index.html").read_text(encoding="utf-8")

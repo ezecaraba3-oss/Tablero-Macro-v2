@@ -410,6 +410,21 @@
    "salidas": {
     "mensual": "^(smvm_|jub_|cbt_ia)"
    }
+  },
+  {
+   "id": "gini",
+   "nombre": "Desigualdad (coeficiente de Gini)",
+   "origen": "INDEC",
+   "frecuencia": "trimestral",
+   "archivo": "gini_trimestral.csv",
+   "regla": {
+    "tipo": "trimestral",
+    "rezago_dias": 100
+   },
+   "salidas": {
+    "trimestral": "^gini$",
+    "semestral": "^gini$"
+   }
   }
  ],
  "pendientes": [

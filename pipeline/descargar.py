@@ -885,9 +885,26 @@ def d_haberes():
     guardar("haberes_mensual.csv", ["mes", "smvm", "jub", "cba", "cbt"], a_filas(d, "mes"))
 
 
+# Coeficiente de Gini del ingreso per cápita familiar (INDEC, EPH continua, trimestral).
+def d_gini():
+    h = libro(bajar(f"{INDEC}/sociedad/serie_coeficiente_gini.xlsx"))
+    hoja = next(iter(h.values()))
+    filas, anio = {}, None
+    for r in sorted(hoja):
+        v = hoja[r]
+        a = re.match(r"\s*(\d{4})", str(v.get(0, "")))
+        anio = int(a.group(1)) if a else anio
+        q = re.match(r"\s*(\d)\D*trim", str(v.get(1, "")))
+        if anio and q and num_celda(v.get(2)) is not None:
+            filas[f"{anio}-T{q.group(1)}"] = round(num_celda(v[2]), 3)
+    if len(filas) < 60:
+        sys.exit(f"Gini: la planilla trae solo {len(filas)} trimestres")
+    guardar("gini_trimestral.csv", ["trimestre", "gini"], [{"trimestre": t, "gini": g} for t, g in sorted(filas.items())])
+
+
 FUENTES_POR_ID = {"diario": d_diario, "mercado": d_mercado, "precios": d_precios, "curva": d_curva, "bcra": d_bcra, "credito": d_credito, "itcrm": d_itcrm, "global": d_global, "deuda_mensual": d_deuda_mensual, "fiscal": d_fiscal,
                   "series_mensuales": d_series_mensuales, "actividad": d_actividad, "series_trimestrales": d_series_trimestrales, "demanda": d_demanda, "deuda_trim": d_deuda_trim,
-                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio, "consumo": d_consumo, "recaudacion": d_recaudacion, "eph": d_eph, "inversion": d_inversion, "m2": d_m2, "prestamos_pesos": d_prestamos_pesos, "haberes": d_haberes}
+                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio, "consumo": d_consumo, "recaudacion": d_recaudacion, "eph": d_eph, "inversion": d_inversion, "m2": d_m2, "prestamos_pesos": d_prestamos_pesos, "haberes": d_haberes, "gini": d_gini}
 
 
 def main():
