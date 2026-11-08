@@ -801,9 +801,19 @@ def d_recaudacion():
     guardar_preservando("recaudacion_mensual.csv", ["mes", "total", "tributarios", "der_imp", "der_exp"], filas)
 
 
+# EPH: tasas trimestrales del total de aglomerados (la API las publica como proporción).
+SERIES_EPH = {"desempleo": "45.2_ECTDT_0_T_33", "actividad": "43.2_ECTAT_0_T_33", "empleo": "44.2_ECTET_0_T_30"}
+
+
+def d_eph():
+    d = api(SERIES_EPH)
+    trim = {c: {f"{m[:4]}-T{(int(m[5:]) + 2) // 3}": v * 100 for m, v in s.items()} for c, s in d.items()}
+    guardar("eph_trimestral.csv", ["trimestre", *trim], a_filas(trim, "trimestre"))
+
+
 FUENTES_POR_ID = {"diario": d_diario, "mercado": d_mercado, "precios": d_precios, "curva": d_curva, "bcra": d_bcra, "credito": d_credito, "itcrm": d_itcrm, "global": d_global, "deuda_mensual": d_deuda_mensual, "fiscal": d_fiscal,
                   "series_mensuales": d_series_mensuales, "actividad": d_actividad, "series_trimestrales": d_series_trimestrales, "demanda": d_demanda, "deuda_trim": d_deuda_trim,
-                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio, "consumo": d_consumo, "recaudacion": d_recaudacion}
+                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio, "consumo": d_consumo, "recaudacion": d_recaudacion, "eph": d_eph}
 
 
 def main():

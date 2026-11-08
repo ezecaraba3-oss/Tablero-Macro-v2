@@ -289,7 +289,7 @@ def extender_filas(obj):
         mes = mover_mes(mes, 1)
     obj["mensual"] = escribir_tabla(cols, filas)
     trimestres = set()
-    for archivo in ("series_trimestrales.csv", "demanda_trimestral.csv"):
+    for archivo in ("series_trimestrales.csv", "demanda_trimestral.csv", "eph_trimestral.csv"):
         trimestres |= {r["trimestre"] for r in leer_fuente(archivo)[1]}
     cols, filas = leer_tabla(obj["trimestral"])
     existentes = {r["trimestre"] for r in filas}
@@ -578,6 +578,38 @@ def actualizar_kpi_recaudacion(obj):
             r["estado"] = "bueno" if a > 0 else "malo"
         elif num(M.get(mover_mes(m, -12), {}).get(col)) is not None:
             r["variacion"] = fmt(a - num(M[mover_mes(m, -12)][col]), 2)
+    obj["ultimos"] = escribir_tabla(cols, filas)
+
+
+def aplicar_eph(obj):
+    """Tasas de la EPH: suma los trimestres posteriores a la v1, con un decimal como INDEC."""
+    cols, filas = leer_tabla(obj["trimestral"])
+    T = {r["trimestre"]: r for r in filas if "-T" in r["trimestre"]}
+    F = {f["trimestre"]: f for f in leer_fuente("eph_trimestral.csv")[1]}
+    desde = {c: ultimo_con(T, c) for c in ("desempleo", "actividad", "empleo", "desempleo_dif_ia")}
+    for t, f in sorted(F.items()):
+        r = T.get(t)
+        if r is None:
+            continue
+        for c in ("desempleo", "actividad", "empleo"):
+            if t > desde[c] and num(f[c]) is not None:
+                r[c] = fmt(num(f[c]), 1)
+        previo = T.get(f"{int(t[:4]) - 1}-{t[5:]}")
+        if t > desde["desempleo_dif_ia"] and previo and num(r["desempleo"]) is not None and num(previo["desempleo"]) is not None:
+            r["desempleo_dif_ia"] = fmt(num(r["desempleo"]) - num(previo["desempleo"]), 1)
+    obj["trimestral"] = escribir_tabla(cols, filas)
+
+
+def actualizar_kpi_eph(obj):
+    cols, filas = leer_tabla(obj["ultimos"])
+    _, tf = leer_tabla(obj["trimestral"])
+    T = {r["trimestre"]: r for r in tf if "-T" in r["trimestre"]}
+    t = max(k for k, r in T.items() if num(r["desempleo"]) is not None)
+    for r in filas:
+        if r["id"] == "desempleo" and t > r["periodo"]:
+            var = num(T[t]["desempleo_dif_ia"])
+            r.update(valor=fmt(num(T[t]["desempleo"]), 1), periodo=t, periodo_txt=f"{t[-1]}.º trim. {t[:4]}", variacion=fmt(var, 1) if var is not None else "",
+                     estado="malo" if (var or 0) > 0 else "bueno" if (var or 0) < 0 else "neutral")
     obj["ultimos"] = escribir_tabla(cols, filas)
 
 
@@ -1067,6 +1099,7 @@ def main():
     aplicar_indec_sectores(obj)
     aplicar_comercio(obj)
     aplicar_recaudacion(obj)
+    aplicar_eph(obj)
     M = actualizar_mensual(obj)
     actualizar_inv_mensual(obj, M)
     actualizar_comercio_anual(obj, M)
@@ -1080,6 +1113,7 @@ def main():
     actualizar_kpi_mercado(obj)
     actualizar_kpi_indec(obj)
     actualizar_kpi_recaudacion(obj)
+    actualizar_kpi_eph(obj)
     obj["diario"] = escribir_tabla(*leer_fuente("diario.csv"))
     tabla_calendario(obj)
     SALIDA.write_text(ini + json.dumps(obj, ensure_ascii=False) + fin, encoding="utf-8", newline="\n")

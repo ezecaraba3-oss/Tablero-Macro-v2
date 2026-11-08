@@ -67,6 +67,11 @@ def columnas_cambiadas(antes, despues):
         ia, ib = {r[clave]: r for r in a}, {r[clave]: r for r in b}
         for k in set(ia) | set(ib):
             ra, rb = ia.get(k, {}), ib.get(k, {})
+            if k not in ia:
+                # Una fila nueva no pisa datos: trae columnas estructurales (trim_inicio) y derivadas de datos ya
+                # publicados. Basta con que alguna fuente actualizada escriba en esa tabla.
+                cambios.add((n, "+fila"))
+                continue
             for c in set(ra) | set(rb):
                 if c != clave and (ra.get(c) or "") != (rb.get(c) or ""):
                     cambios.add((n, c))
@@ -78,7 +83,7 @@ def permitido(tab, col, fuentes):
         return True
     for f in fuentes:
         patron = f["salidas"].get(tab)
-        if patron and (col == "*" or re.search(patron, col)):
+        if patron and (col in ("*", "+fila") or re.search(patron, col)):
             return True
     return False
 

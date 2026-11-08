@@ -333,20 +333,24 @@
     "mensual": "^(recaudacion_real_ia|presion_trib_12m)$",
     "inv_mensual": "^(der_|tc$|ar_efec)"
    }
-  }
- ],
- "pendientes": [
+  },
   {
+   "id": "eph",
    "nombre": "Empleo y desempleo (EPH)",
-   "origen": "INDEC",
+   "origen": "INDEC vía datos.gob.ar",
    "frecuencia": "trimestral",
-   "tabla": "trimestral",
-   "columna": "desempleo",
+   "archivo": "eph_trimestral.csv",
+   "columna_clave": "desempleo",
    "regla": {
     "tipo": "trimestral",
     "rezago_dias": 85
+   },
+   "salidas": {
+    "trimestral": "^(desempleo|actividad$|empleo$)"
    }
-  },
+  }
+ ],
+ "pendientes": [
   {
    "nombre": "Inversión e IED",
    "origen": "INDEC y BCRA",
