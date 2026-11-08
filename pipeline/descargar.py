@@ -902,9 +902,36 @@ def d_gini():
     guardar("gini_trimestral.csv", ["trimestre", "gini"], [{"trimestre": t, "gini": g} for t, g in sorted(filas.items())])
 
 
+# Consumo físico: electricidad (CAMMESA), gas (Secretaría de Energía), combustibles, autos, cemento, asfalto y faena.
+SERIES_FISICO = {"f07": "38.3_N_1994_M_6", "f08": "38.3_NS_1994_M_11", "f09": "38.3_NU_1994_M_11", "f10": "38.3_G_1994_M_6",
+                 "f11": "38.3_ANIA_1994_M_27", "f12": "38.3_ANIU_1994_M_27", "f13": "38.3_CEM_1994_M_7", "f14": "38.3_A_1994_M_7",
+                 "f15": "40.3_VC_0_M_15", "f16": "41.3_FA_0_A_10", "f17": "41.3_FP_0_A_14"}
+# La API devuelve vacías algunas columnas de estos conjuntos: se leen sus CSV de origen.
+CSV_FISICO = {
+    "https://infra.datos.gob.ar/catalog/sspm/dataset/367/distribution/367.3/download/demanda-de-electricidad-datos-mensuales.csv":
+        {"f01": "demanda_residencial", "f02": "comercio_e_industria", "f03": "demanda_total", "temp": "temperatura_promedio"},
+    "https://infra.datos.gob.ar/catalog/sspm/dataset/364/distribution/364.3/download/actividad-gas.csv":
+        {"f04": "residencial", "f05": "comercial", "f06": "gnc"},
+}
+
+
+def d_consumo_fisico():
+    d = api(SERIES_FISICO)
+    d["f15"] = {m: v / 1000 for m, v in d.get("f15", {}).items()}  # cabezas -> miles de cabezas
+    for url, cols in CSV_FISICO.items():
+        filas = list(csv.DictReader(io.StringIO(bajar(url).decode("utf-8", "replace"))))
+        faltan = set(cols.values()) - set(filas[0])
+        if faltan:
+            sys.exit(f"Consumo físico: faltan columnas {faltan} en {url}")
+        for k, col in cols.items():
+            d[k] = {f["indice_tiempo"][:7]: float(f[col]) for f in filas if f[col] not in ("", None)}
+    claves = [f"f{i:02d}" for i in range(1, 18)] + ["temp"]
+    guardar("consumo_fisico.csv", ["mes", *claves], a_filas({k: cerrados(d.get(k, {})) for k in claves}, "mes"))
+
+
 FUENTES_POR_ID = {"diario": d_diario, "mercado": d_mercado, "precios": d_precios, "curva": d_curva, "bcra": d_bcra, "credito": d_credito, "itcrm": d_itcrm, "global": d_global, "deuda_mensual": d_deuda_mensual, "fiscal": d_fiscal,
                   "series_mensuales": d_series_mensuales, "actividad": d_actividad, "series_trimestrales": d_series_trimestrales, "demanda": d_demanda, "deuda_trim": d_deuda_trim,
-                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio, "consumo": d_consumo, "recaudacion": d_recaudacion, "eph": d_eph, "inversion": d_inversion, "m2": d_m2, "prestamos_pesos": d_prestamos_pesos, "haberes": d_haberes, "gini": d_gini}
+                  "emae": d_emae, "salarios": d_salarios, "ipi": d_ipi, "comercio": d_comercio, "consumo": d_consumo, "recaudacion": d_recaudacion, "eph": d_eph, "inversion": d_inversion, "m2": d_m2, "prestamos_pesos": d_prestamos_pesos, "haberes": d_haberes, "gini": d_gini, "consumo_fisico": d_consumo_fisico}
 
 
 def main():

@@ -790,6 +790,23 @@ def aplicar_gini(obj):
     obj["semestral"] = escribir_tabla(scols, sfilas)
 
 
+def aplicar_consumo_fisico(obj):
+    """Consumo físico: suma los meses posteriores al último dato de la v1 en cada serie."""
+    cols, filas = leer_tabla(obj["consumo_fisico"])
+    C = {r["mes"]: r for r in filas}
+    F = {f["mes"]: f for f in leer_fuente("consumo_fisico.csv")[1]}
+    desde = {c: ultimo_con(C, c) or "" for c in cols[1:]}
+    for mes in sorted(m for m in F if m > filas[-1]["mes"] and any(num(F[m][c]) is not None for c in cols[1:])):
+        C[mes] = {**{c: "" for c in cols}, "mes": mes}
+        filas.append(C[mes])
+    for mes, f in F.items():
+        r = C.get(mes)
+        for c in cols[1:]:
+            if r is not None and mes > desde[c] and num(f.get(c)) is not None:
+                r[c] = fmt(num(f[c]), 3)
+    obj["consumo_fisico"] = escribir_tabla(cols, filas)
+
+
 def actualizar_kpi_indec(obj):
     cols, filas = leer_tabla(obj["ultimos"])
     _, mf = leer_tabla(obj["mensual"])
@@ -1282,6 +1299,7 @@ def main():
     aplicar_inversion(obj)
     aplicar_dinero_y_haberes(obj)
     aplicar_gini(obj)
+    aplicar_consumo_fisico(obj)
     M = actualizar_mensual(obj)
     actualizar_inv_mensual(obj, M)
     actualizar_comercio_anual(obj, M)

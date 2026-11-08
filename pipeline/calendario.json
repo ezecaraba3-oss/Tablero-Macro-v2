@@ -425,6 +425,22 @@
     "trimestral": "^gini$",
     "semestral": "^gini$"
    }
+  },
+  {
+   "id": "consumo_fisico",
+   "nombre": "Consumo físico: electricidad, gas, combustibles, autos, cemento y faena",
+   "origen": "CAMMESA, Secretaría de Energía, INDEC y Agricultura vía datos.gob.ar",
+   "frecuencia": "mensual",
+   "archivo": "consumo_fisico.csv",
+   "columna_clave": "f03",
+   "regla": {
+    "tipo": "mensual",
+    "dia": 20,
+    "rezago": 1
+   },
+   "salidas": {
+    "consumo_fisico": ".*"
+   }
   }
  ],
  "pendientes": [

@@ -10,6 +10,7 @@ Generado el 08/11/2026 con `pipeline/actualizar.py`. Las reglas están en `pipel
 | Canasta básica, salario mínimo y jubilación mínima | INDEC y datos.gob.ar | mensual | sep 2026 | 16/11/2026 | Automática |
 | Contexto global: granos, Brent, EE. UU. y Brasil | FRED y Banco Central de Brasil | mensual | ago 2026 | 20/11/2026 | Automática |
 | Comercio exterior: totales, rubros y socios | INDEC | mensual | sep 2026 | 20/11/2026 | Automática |
+| Consumo físico: electricidad, gas, combustibles, autos, cemento y faena | CAMMESA, Secretaría de Energía, INDEC y Agricultura vía datos.gob.ar | mensual | sep 2026 | 20/11/2026 | Automática |
 | Fiscal: ingresos, gastos e intereses | Hacienda vía datos.gob.ar | mensual | ago 2026 | 25/11/2026 | Automática |
 | Empleo registrado y turismo | Secretaría de Trabajo y BCRA vía datos.gob.ar | mensual | jun 2026 | 25/11/2026 | Automática |
 | Capacidad instalada, construcción y servicios públicos | INDEC vía datos.gob.ar | mensual | jul 2026 | 25/11/2026 | Automática |

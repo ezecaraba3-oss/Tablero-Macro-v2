@@ -95,7 +95,7 @@ for n in base:
                 continue
             if rb.get(c) != ra.get(c):
                 total += 1
-                if not rb.get(c) and n in ("mensual", "inv_mensual", "trimestral") and rb[clave] >= "2025-10":
+                if not rb.get(c) and n in ("mensual", "inv_mensual", "trimestral", "consumo_fisico") and rb[clave] >= "2025-10":
                     continue  # completar celdas vacías recientes no pisa datos de la v1
                 if (rb[clave], c) not in PERMITIDO.get(n, ()):
                     inesperados.append((n, rb[clave], c, rb.get(c), ra.get(c)))
@@ -200,7 +200,7 @@ dif = {m: abs(num(fm[m]["fis_superavit_pib"]) - v) for m, v in prim_v1.items()}
 peor = max(dif, key=dif.get)
 control("superávit primario = resultado primario de la v1", dif[peor] <= 0.02, f"dif máx {dif[peor]:.3f} pp en {peor}; jun 2026: {fm['2026-06']['fis_superavit_pib']} vs {prim_v1['2026-06']}")
 cal_d = tabla(nuevo, "calendario_datos")
-control("calendario completo", len(cal_d) == 29 and sum(x["estado"] == "Automática" for x in cal_d) == 27, str(len(cal_d)))
+control("calendario completo", len(cal_d) == 30 and sum(x["estado"] == "Automática" for x in cal_d) == 28, str(len(cal_d)))
 control("resultado financiero 2025 plausible", -1 < num(M["2025-12"]["fis_financiero_pib"]) < 1, M["2025-12"]["fis_financiero_pib"])
 control("ingresos / PIB plausibles", all(10 < num(x["fis_ingresos_pib"]) < 30 for x in fm.values()), M["2025-12"]["fis_ingresos_pib"])
 
@@ -380,6 +380,21 @@ Sb = {r["semestre"]: r for r in tabla(base, "semestral")}
 mal = [k for k, r in Sb.items() if num(r["gini"]) is not None and r["inicio"] >= "2016-07" and r["inicio"] < "2026-01"
        and not cerca((gf.get(f"{r['inicio'][:4]}-T{1 if r['inicio'][5:] == '01' else 3}", 9) + gf.get(f"{r['inicio'][:4]}-T{2 if r['inicio'][5:] == '01' else 4}", 9)) / 2, num(r["gini"]), 0.0011)]
 control("Gini semestral = promedio de sus trimestres (método de la v1)", not mal, str(mal[:5]))
+
+# Consumo físico: las fuentes reproducen la v1 y los meses nuevos salen de ellas.
+ff = {x["mes"]: x for x in fuente("consumo_fisico.csv")}
+Fb = {r["mes"]: r for r in tabla(base, "consumo_fisico")}
+Fn = {r["mes"]: r for r in tabla(nuevo, "consumo_fisico")}
+peor = {}
+for m in ff:
+    if "2024-01" <= m <= "2026-06" and m in Fb:
+        for c, v in ff[m].items():
+            if c != "mes" and num(v) is not None and num(Fb[m].get(c)):
+                peor[c] = max(peor.get(c, 0), abs(num(v) / num(Fb[m][c]) - 1))
+control("consumo físico: las fuentes reproducen la v1 (2024-2026, error menor al 1 %)", len(peor) == 18 and max(peor.values()) < 0.01, f"{len(peor)} series; peor {max(peor, key=peor.get)} {max(peor.values()):.4f}")
+nuevos = [(m, c) for m in Fn for c in Fn[m] if c != "mes" and Fn[m][c] != "" and not (Fb.get(m, {}).get(c))]
+mal = [(m, c) for m, c in nuevos if not cerca(num(Fn[m][c]), num(ff[m][c]), 0.001)]
+control("consumo físico: datos nuevos iguales a la fuente", not mal, f"{len(nuevos)} celdas nuevas; {mal[:3]}")
 
 # 8. Página.
 html = (RAIZ / "index.html").read_text(encoding="utf-8")
