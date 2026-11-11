@@ -1,11 +1,11 @@
 indicador,unidad,fecha,valor,previo,fecha_previa
 Dólar oficial mayorista,$,2026-11-05,1545.3974,1548.4941,2026-11-04
-Dólar blue,$,2026-11-09,1555,1555,2026-11-08
-Dólar contado con liqui,$,2026-11-09,1664.9,1664.9,2026-11-08
-Dólar MEP,$,2026-11-09,1587.9,1587.9,2026-11-08
-Riesgo país,pb,2026-11-06,939,925,2026-11-05
+Dólar blue,$,2026-11-10,1555,1555,2026-11-09
+Dólar contado con liqui,$,2026-11-10,1664.9,1664.9,2026-11-09
+Dólar MEP,$,2026-11-10,1587.9,1587.9,2026-11-09
+Riesgo país,pb,2026-11-09,873,939,2026-11-06
 Reservas brutas,M US$,2026-11-03,50298.0,50439.0,2026-11-02
 Tasa BADLAR,%,2026-11-04,21.5,22.75,2026-11-03
 Tasa de plazo fijo a 30 días,%,2026-11-04,21.18,22.12,2026-11-03
-Techo de la banda cambiaria,$,2026-11-05,1958.16,1956.93,2026-11-04
-Piso de la banda cambiaria,$,2026-11-05,709.69,710.15,2026-11-04
+Techo de la banda cambiaria,$,2026-11-11,1965.55,1958.16,2026-11-05
+Piso de la banda cambiaria,$,2026-11-11,706.98,709.69,2026-11-05
