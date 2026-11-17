@@ -1,14 +1,11 @@
 # Calendario de actualización
 
-Generado el 13/11/2026 con `pipeline/actualizar.py`. Las reglas están en `pipeline/calendario.json`.
+Generado el 17/11/2026 con `pipeline/actualizar.py`. Las reglas están en `pipeline/calendario.json`.
 
 | Dato | Origen | Frecuencia | Último dato | Próxima revisión | Actualización |
 |---|---|---|---|---|---|
-| Curva de tasas en pesos | ArgentinaDatos | diaria, a las 18:00 | 13/11/2026 | 16/11/2026 | Automática |
-| Último dato diario: dólares, riesgo país, reservas y tasas | BCRA y ArgentinaDatos | diaria, a las 18:00 | 13/11/2026 | 16/11/2026 | Automática |
-| Inflación y expectativas | INDEC y REM vía BCRA | mensual | sep 2026 | 16/11/2026 | Automática |
-| Canasta básica, salario mínimo y jubilación mínima | INDEC y datos.gob.ar | mensual | sep 2026 | 16/11/2026 | Automática |
-| Inflación por categoría, división y región, y mayoristas | INDEC | mensual | sep 2026 | 16/11/2026 | Automática |
+| Curva de tasas en pesos | ArgentinaDatos | diaria, a las 18:00 | 16/11/2026 | 17/11/2026 | Automática |
+| Último dato diario: dólares, riesgo país, reservas y tasas | BCRA y ArgentinaDatos | diaria, a las 18:00 | 17/11/2026 | 18/11/2026 | Automática |
 | Contexto global: granos, Brent, EE. UU. y Brasil | FRED y Banco Central de Brasil | mensual | ago 2026 | 20/11/2026 | Automática |
 | Comercio exterior: totales, rubros y socios | INDEC | mensual | sep 2026 | 20/11/2026 | Automática |
 | Consumo físico: electricidad, gas, combustibles, autos, cemento y faena | CAMMESA, Secretaría de Energía, INDEC y Agricultura vía datos.gob.ar | mensual | sep 2026 | 20/11/2026 | Automática |
@@ -28,6 +25,9 @@ Generado el 13/11/2026 con `pipeline/actualizar.py`. Las reglas están en `pipel
 | Recaudación y derechos de comercio | ARCA | mensual | oct 2026 | 03/12/2026 | Automática |
 | M2 privado (variación interanual) | API del BCRA | diaria en origen, último dato del mes en el tablero | oct 2026 | 03/12/2026 | Automática |
 | Industria por sector (IPI manufacturero) | INDEC | mensual | sep 2026 | 10/12/2026 | Automática |
+| Inflación y expectativas | INDEC y REM vía BCRA | mensual | oct 2026 | 16/12/2026 | Automática |
+| Canasta básica, salario mínimo y jubilación mínima | INDEC y datos.gob.ar | mensual | oct 2026 | 16/12/2026 | Automática |
+| Inflación por categoría, división y región, y mayoristas | INDEC | mensual | oct 2026 | 16/12/2026 | Automática |
 | Empleo y desempleo (EPH) | INDEC vía datos.gob.ar | trimestral | 2.º trim. 2026 | 24/12/2026 | Automática |
 | Inversión por tipo e IED | INDEC y balance de pagos vía datos.gob.ar | trimestral | 2.º trim. 2026 | 24/12/2026 | Automática |
 | Balance de pagos, posición internacional, subocupación e informalidad | INDEC vía datos.gob.ar | trimestral | 2.º trim. 2026 | 08/01/2027 | Automática |
